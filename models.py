@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text
-from .database import Base
+from database import Base
 
 class DishType(Base):
     __tablename__ = 'dish_types'
