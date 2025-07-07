@@ -1,20 +1,21 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import date
+from typing import Optional
+from pydantic import BaseModel
 
-class DishTypeBase(BaseModel):
+# 기본 재료 스키마
+class IngredientBase(BaseModel):
     name: str
-    description: Optional[str] = None
 
-class DishTypeCreate(DishTypeBase):
+class IngredientCreate(IngredientBase):
     pass
 
-class DishType(DishTypeBase):
+class Ingredient(IngredientBase):
     id: int
 
     class Config:
         from_attributes = True
 
+# 사용자가 소유한 재료 스키마
 class UserIngredientBase(BaseModel):
     ingredient_name: str
     expiration_date: Optional[date] = None
@@ -24,7 +25,7 @@ class UserIngredientCreate(UserIngredientBase):
 
 class UserIngredient(UserIngredientBase):
     id: int
-    ingredient_id: int
+    ingredient: Ingredient # 관계를 표시
 
     class Config:
         from_attributes = True

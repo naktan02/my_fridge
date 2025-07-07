@@ -2,6 +2,20 @@
 version: '3.8'
 
 services:
+  # API 서비스 (FastAPI)
+  api:
+    build: .
+    container_name: my_fridge_api
+    # ✅ 추가된 부분: 컨테이너 실행 명령어를 여기에 명시적으로 추가
+    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+
+  # 데이터베이스 서비스 (PostgreSQL with pgvector)
   db:
     image: pgvector/pgvector:pg16
     container_name: my_fridge_db
@@ -13,16 +27,6 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  api:
-    build: .
-    container_name: my_fridge_api
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app
-    depends_on:
-      - db
 
 volumes:
   postgres_data:
