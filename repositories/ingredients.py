@@ -15,6 +15,7 @@ class IngredientRepository:
             self.db.add(db_ingredient)
             # self.db.commit()  <- 이 줄을 제거하거나 주석 처리
             # self.db.refresh(db_ingredient) <- 커밋 전에는 refresh 할 수 없으므로 제거
+            self.db.flush()
         return db_ingredient
 
     def add_user_ingredient(self, user_id: int, ingredient_create: ingredient.UserIngredientCreate) -> models.UserIngredient:
