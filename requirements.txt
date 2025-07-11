@@ -6,4 +6,4 @@ passlib[bcrypt]
 alembic
 pytest
 httpx
-anyio
+pytest-asyncio
