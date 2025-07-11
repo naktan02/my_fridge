@@ -4,4 +4,6 @@ sqlalchemy
 psycopg2-binary
 passlib[bcrypt]
 alembic
-# pgvector는 Docker 이미지에 포함되어 있으므로 여기엔 불필요
+pytest
+httpx
+anyio
