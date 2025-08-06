@@ -1,18 +1,32 @@
-# tests/test_users.py (신규 생성)
+# tests/test_users.py
 
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from main import app
-from database import Base, get_db, engine
-from models import User
+from database import Base, get_db
+import models # models.py를 import해야 Base.metadata가 테이블을 인식합니다.
 
 # --- 테스트 환경 설정 ---
-# test_ingredients.py와 동일한 테스트 DB 설정을 사용합니다.
-from tests.test_ingredients import TestingSessionLocal, override_get_db
+# 테스트용 데이터베이스 설정 (test_ingredients.py와 동일하게 설정)
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 테스트 중에는 실제 DB 대신 테스트용 DB를 사용하도록 설정
+# 테스트 중에는 get_db 대신 이 함수를 사용하도록 오버라이드합니다.
+def override_get_db():
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
 app.dependency_overrides[get_db] = override_get_db
+
 
 # 테스트 전후로 DB를 생성하고 삭제하는 fixture
 @pytest.fixture(scope="function", autouse=True)
@@ -65,16 +79,18 @@ async def test_user_login_and_logout():
         login_response = await ac.post("/api/v1/users/login", json=login_data)
 
         assert login_response.status_code == 200
-        # 'session_id' 쿠키가 응답에 포함되었는지 확인
-        assert "session_id" in login_response.cookies
+        # 로그인 후, 클라이언트(ac)의 쿠키 저장소에 session_id가 있는지 확인
+        assert "session_id" in ac.cookies
         assert login_response.json()["message"] == "로그인 되었습니다."
 
         # 3. 로그아웃
-        # 로그인 시 받은 쿠키를 포함하여 로그아웃 요청
-        logout_response = await ac.post("/api/v1/users/logout", cookies=login_response.cookies)
+        # 클라이언트에 저장된 쿠키는 자동으로 다음 요청에 포함됩니다.
+        logout_response = await ac.post("/api/v1/users/logout")
         assert logout_response.status_code == 200
-        # 쿠키가 만료(max_age=0)되었는지 확인
-        assert logout_response.cookies["session_id"]['max_age'] == 0
+
+        # 로그아웃 응답을 받은 후, 클라이언트의 쿠키 저장소에서
+        # session_id가 삭제되었는지 확인합니다.
+        assert "session_id" not in ac.cookies
 
 
 @pytest.mark.asyncio
