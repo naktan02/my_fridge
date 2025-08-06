@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+import models
 # 'schemas' 모듈 전체를 가져오도록 수정합니다.
 import schemas
 from repositories.ingredients import IngredientRepository
 from database import get_db
+from auth.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -13,10 +14,11 @@ router = APIRouter()
 def add_my_ingredient(
     # 입력 스키마는 그대로 UserIngredientCreate를 사용합니다.
     ingredient_create: schemas.ingredient.UserIngredientCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     repo = IngredientRepository(db)
-    user_id = 1  # TODO: 향후 JWT 인증을 통해 실제 사용자 ID를 가져올 부분
+    user_id = current_user.id # <-- 로그인된 사용자 ID 사용
 
     try:
         # Repository의 메서드 호출 한 줄로 비즈니스 로직 처리

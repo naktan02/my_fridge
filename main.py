@@ -1,6 +1,6 @@
 # main.py
 from fastapi import FastAPI
-from api.v1.routes import dishes, ingredients
+from api.v1.routes import dishes, ingredients,users
 from database import Base, engine # ✅ Base와 engine 임포트
 
 # ✅ 데이터베이스 테이블을 생성하는 함수 추가
@@ -17,6 +17,7 @@ def on_startup():
 
 app.include_router(dishes.router, prefix="/api/v1", tags=["Dish Types"])
 app.include_router(ingredients.router, prefix="/api/v1", tags=["User Ingredients"])
+app.include_router(users.router, prefix="/api/v1") 
 
 @app.get("/")
 def read_root():

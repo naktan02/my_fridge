@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey,Text
+from sqlalchemy import Column, Integer, String, Date, ForeignKey,Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -8,9 +8,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
     # User가 어떤 재료들을 가지고 있는지 알려주는 관계 설정
     ingredients = relationship("UserIngredient", back_populates="owner")
 
@@ -45,3 +45,4 @@ class UserIngredient(Base):
     # ORM이 User 모델과 UserIngredient 모델을 쉽게 연결하도록 돕습니다.
     owner = relationship("User", back_populates="ingredients")
     ingredient = relationship("Ingredient")
+    

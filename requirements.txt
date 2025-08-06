@@ -7,3 +7,7 @@ alembic
 pytest
 httpx
 pytest-asyncio
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic[email]
+redis
