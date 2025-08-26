@@ -1,35 +1,43 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
-  # API 서비스 (FastAPI)
   api:
     build: .
     container_name: my_fridge_api
-    # ✅ 추가된 부분: 컨테이너 실행 명령어를 여기에 명시적으로 추가
-    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
     volumes:
       - .:/app
+      - uv_venv:/app/.venv     # ✅ .venv 분리 (이미지 -> 볼륨으로 복사됨)
+    env_file:
+      - .env
     environment:
       - PYTHONPATH=.
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
-  # 데이터베이스 서비스 (PostgreSQL with pgvector)
   db:
     image: pgvector/pgvector:pg16
     container_name: my_fridge_db
-    environment:
-      POSTGRES_USER: jmgjmg102
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: fridge_db
+    env_file:
+      - .env
+    # environment:           # ❌ 빈 블록 삭제
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-fridge_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: my_fridge_redis
@@ -41,3 +49,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uv_venv:                    # ✅ 추가

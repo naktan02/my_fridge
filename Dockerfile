@@ -1,16 +1,19 @@
-# 1. 기본 이미지 설정 (Python 3.10)
-FROM python:3.10
+# 베이스: Python 포함 uv 이미지 (Debian 계열)
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm
 
-# 2. 컨테이너 내 작업 디렉토리 설정
 WORKDIR /app
 
-# 3. 의존성 파일 복사 (빌드 캐시 효율화)
-COPY requirements.txt .
+# 1) 의존성 스펙만 먼저 복사 → 레이어 캐시 최대 활용
+COPY pyproject.toml uv.lock ./
 
-# 4. 의존성 설치
-RUN pip install --no-cache-dir --upgrade pip && pip install -r requirements.txt
+# 2) 런타임 의존성 설치 (dev 제외, 잠금 강제)
+#    캐시를 위해 uv 캐시 마운트(빌더에 따라 자동/옵션)
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    uv sync --no-dev --frozen
 
-# 5. 소스 코드 복사
+# 3) 애플리케이션 복사
 COPY . .
 
-# CMD 명령어는 docker-compose.yml에서 관리하므로 여기서는 생략합니다.
+# uv는 기본적으로 .pyc를 만들지 않는다. 이미지 스타트업 최적용이면 켠다.
+ENV UV_COMPILE_BYTECODE=1 \
+    PYTHONUNBUFFERED=1
