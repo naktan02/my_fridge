@@ -34,7 +34,7 @@ Thumbs.db
 # ---- 환경변수/시크릿
 .env
 .env.*
-!.env.example       # ← 샘플은 커밋
+!**/.env.example
 
 # ---- 로컬 DB/산출물
 *.db

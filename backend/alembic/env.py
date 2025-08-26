@@ -12,6 +12,22 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    # ini에 값이 있으면 그걸 쓰고, 없으면 에러
+    db_url = config.get_main_option("sqlalchemy.url")
+if not db_url:
+    raise RuntimeError(
+        "DATABASE_URL not set and alembic.ini has no sqlalchemy.url. "
+        "Set .env or fill alembic.ini."
+)
+
+# 드라이버 명시 권장: postgresql+psycopg2://...
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+config.set_main_option("sqlalchemy.url", db_url)
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

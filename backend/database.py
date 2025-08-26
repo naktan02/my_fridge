@@ -1,10 +1,13 @@
+# backend/database.py
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Docker 컨테이너 이름 'db'를 호스트로 사용
-DATABASE_URL = "postgresql://jmgjmg102:1234@db:5432/fridge_db"
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL env not set. Check your .env / compose.")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

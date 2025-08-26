@@ -1,21 +1,20 @@
-version: '3.8'
-
 services:
   api:
-    build: .
+    build:
+      context: ./backend
     container_name: my_fridge_api
     command: >
       sh -c "uv run alembic upgrade head &&
              uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
-      - "8000:8000"
+      - "${HOST_API_PORT:-8000}:8000"
     volumes:
-      - .:/app
-      - uv_venv:/app/.venv     # ✅ .venv 분리 (이미지 -> 볼륨으로 복사됨)
+      - ./backend:/app
+      - uv_venv:/app/.venv         # .venv를 네임드 볼륨으로 분리해서 가리지 않게
     env_file:
       - .env
     environment:
-      - PYTHONPATH=.
+      - PYTHONPATH=.               # 필요 없을 수도 있지만 안전빵
     depends_on:
       db:
         condition: service_healthy
@@ -27,9 +26,8 @@ services:
     container_name: my_fridge_db
     env_file:
       - .env
-    # environment:           # ❌ 빈 블록 삭제
     ports:
-      - "5433:5432"
+      - "${HOST_DB_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -49,4 +47,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  uv_venv:                    # ✅ 추가
+  uv_venv:
