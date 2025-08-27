@@ -1,4 +1,5 @@
-# repositories/ingredients.py
+# /backend/repositories/ingredients.py (수정할 필요 없음 - 현재 상태)
+
 from sqlalchemy.orm import Session
 import models
 from schemas import ingredient
@@ -39,13 +40,12 @@ class IngredientRepository:
             return db_user_ingredient
         except Exception as e:
             self.db.rollback() # 오류 발생 시 모든 변경사항 롤백
-            # 에러 로깅을 추가하면 더 좋습니다.
             raise e
+            
     def create_master_ingredient(self, ingredient_data: ingredient.MasterIngredientCreate) -> models.Ingredient:
         """
         '재료 사전'에 새로운 재료를 추가하는 관리자용 메서드.
         """
-        # 이미 존재하는 재료인지 확인
         existing_ingredient = self.db.query(models.Ingredient).filter(models.Ingredient.name == ingredient_data.name).first()
         if existing_ingredient:
             raise HTTPException(status_code=409, detail="이미 존재하는 재료입니다.")

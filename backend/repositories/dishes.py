@@ -2,8 +2,9 @@
 
 from sqlalchemy.orm import Session, joinedload
 import models
-from schemas.dish import DishCreate, RecipeCreate, RecipeIngredientInfo
-from fastapi import FastAPI, HTTPException
+from schemas.dish import DishCreate, RecipeCreate
+# ✅ FastAPI의 HTTPException을 import합니다.
+from fastapi import HTTPException
 
 class DishRepository:
     def __init__(self, db: Session):
@@ -20,6 +21,15 @@ class DishRepository:
 
     def create_dish_with_recipes(self, dish_create: DishCreate) -> models.Dish:
         """Dish와 그에 속한 Recipe, RecipeIngredient를 트랜잭션으로 한 번에 생성합니다."""
+        
+        # ✅ --- 코드 추가 시작 ---
+        # 요리를 생성하기 전, 같은 이름의 요리가 이미 존재하는지 확인합니다.
+        existing_dish = self.db.query(models.Dish).filter(models.Dish.name == dish_create.name).first()
+        if existing_dish:
+            # 존재한다면, 500 에러 대신 "이미 존재하는 요리"라는 명확한 에러를 발생시킵니다.
+            raise HTTPException(status_code=409, detail="이미 존재하는 요리입니다.")
+        # ✅ --- 코드 추가 끝 ---
+
         try:
             # 1. Dish 모델 생성
             db_dish = models.Dish(
@@ -68,21 +78,20 @@ class DishRepository:
         
     def add_recipe_to_dish(self, dish_id: int, recipe_data: RecipeCreate) -> models.Recipe:
         """기존 Dish에 새로운 Recipe를 추가합니다."""
-        # Dish가 존재하는지 먼저 확인
         db_dish = self.db.query(models.Dish).filter(models.Dish.id == dish_id).first()
         if not db_dish:
             raise HTTPException(status_code=404, detail="요리를 찾을 수 없습니다.")
         
         try:
-            # 1. Recipe 모델 생성
+            # Recipe 모델 생성
             db_recipe = models.Recipe(
                 dish_id=dish_id,
                 **recipe_data.model_dump(exclude={'ingredients'})
             )
             self.db.add(db_recipe)
-            self.db.flush() # recipe의 id 확보
+            self.db.flush()
 
-            # 2. RecipeIngredient 정보 처리
+            # RecipeIngredient 정보 처리
             for ing_info in recipe_data.ingredients:
                 db_ingredient = self._get_or_create_ingredient(ing_info.name)
                 db_recipe_ingredient = models.RecipeIngredient(
