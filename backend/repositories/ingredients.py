@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 import models
 from schemas import ingredient
+from fastapi import FastAPI, HTTPException
 
 class IngredientRepository:
     def __init__(self, db: Session):
@@ -39,4 +40,26 @@ class IngredientRepository:
         except Exception as e:
             self.db.rollback() # 오류 발생 시 모든 변경사항 롤백
             # 에러 로깅을 추가하면 더 좋습니다.
+            raise e
+    def create_master_ingredient(self, ingredient_data: ingredient.MasterIngredientCreate) -> models.Ingredient:
+        """
+        '재료 사전'에 새로운 재료를 추가하는 관리자용 메서드.
+        """
+        # 이미 존재하는 재료인지 확인
+        existing_ingredient = self.db.query(models.Ingredient).filter(models.Ingredient.name == ingredient_data.name).first()
+        if existing_ingredient:
+            raise HTTPException(status_code=409, detail="이미 존재하는 재료입니다.")
+
+        try:
+            db_ingredient = models.Ingredient(
+                name=ingredient_data.name,
+                category=ingredient_data.category,
+                storage_type=ingredient_data.storage_type
+            )
+            self.db.add(db_ingredient)
+            self.db.commit()
+            self.db.refresh(db_ingredient)
+            return db_ingredient
+        except Exception as e:
+            self.db.rollback()
             raise e

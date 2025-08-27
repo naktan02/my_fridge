@@ -6,7 +6,7 @@ import schemas
 from repositories.ingredients import IngredientRepository
 from database import get_db
 from auth.dependencies import get_current_user
-
+from auth.dependencies import get_current_user, is_admin
 router = APIRouter()
 
 # response_model을 새로 만든 UserIngredientResponse 스키마로 변경합니다.
@@ -28,3 +28,16 @@ def add_my_ingredient(
         # Repository에서 발생한 에러를 그대로 전달
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
+@router.post("/admin/ingredients", response_model=schemas.ingredient.MasterIngredientResponse, status_code=201)
+def create_master_ingredient_by_admin(
+    ingredient_create: schemas.ingredient.MasterIngredientCreate,
+    db: Session = Depends(get_db),
+    # ✅ 이 엔드포인트는 관리자만 접근 가능
+    admin_user: models.User = Depends(is_admin)
+):
+    """
+    **관리자용 API**
+    - '재료 사전'에 새로운 재료를 등록합니다.
+    """
+    repo = IngredientRepository(db)
+    return repo.create_master_ingredient(ingredient_data=ingredient_create)

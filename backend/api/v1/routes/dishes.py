@@ -36,5 +36,15 @@ def get_all_dishes(repo: DishRepository = Depends(get_repo)):
     """
     return repo.get_all_dishes()
 
-# 여기에 나중에 검색 API 엔드포인트가 추가될 것입니다.
-# @router.get("/search", ...)
+@router.post("/{dish_id}/recipes", response_model=schemas.dish.Recipe, status_code=201)
+def add_recipe_to_dish(
+    dish_id: int,
+    recipe_create: schemas.dish.RecipeCreate,
+    repo: DishRepository = Depends(get_repo)
+    # admin_user: models.User = Depends(is_admin) # 관리자 권한 확인
+):
+    """
+    **관리자용 API**
+    - 특정 ID를 가진 기존 요리(Dish)에 새로운 레시피를 추가합니다.
+    """
+    return repo.add_recipe_to_dish(dish_id=dish_id, recipe_data=recipe_create)

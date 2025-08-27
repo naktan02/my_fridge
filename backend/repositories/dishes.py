@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session, joinedload
 import models
 from schemas.dish import DishCreate, RecipeCreate, RecipeIngredientInfo
+from fastapi import FastAPI, HTTPException
 
 class DishRepository:
     def __init__(self, db: Session):
@@ -64,3 +65,37 @@ class DishRepository:
             .joinedload(models.Recipe.ingredients)
             .joinedload(models.RecipeIngredient.ingredient)
         ).all()
+        
+    def add_recipe_to_dish(self, dish_id: int, recipe_data: RecipeCreate) -> models.Recipe:
+        """기존 Dish에 새로운 Recipe를 추가합니다."""
+        # Dish가 존재하는지 먼저 확인
+        db_dish = self.db.query(models.Dish).filter(models.Dish.id == dish_id).first()
+        if not db_dish:
+            raise HTTPException(status_code=404, detail="요리를 찾을 수 없습니다.")
+        
+        try:
+            # 1. Recipe 모델 생성
+            db_recipe = models.Recipe(
+                dish_id=dish_id,
+                **recipe_data.model_dump(exclude={'ingredients'})
+            )
+            self.db.add(db_recipe)
+            self.db.flush() # recipe의 id 확보
+
+            # 2. RecipeIngredient 정보 처리
+            for ing_info in recipe_data.ingredients:
+                db_ingredient = self._get_or_create_ingredient(ing_info.name)
+                db_recipe_ingredient = models.RecipeIngredient(
+                    recipe_id=db_recipe.id,
+                    ingredient_id=db_ingredient.id,
+                    quantity_display=ing_info.quantity_display
+                )
+                self.db.add(db_recipe_ingredient)
+            
+            self.db.commit()
+            self.db.refresh(db_recipe)
+            return db_recipe
+
+        except Exception as e:
+            self.db.rollback()
+            raise e

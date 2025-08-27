@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from datetime import date
+from typing import List, Optional
 
 # --- 이 파일을 아래 내용으로 전체 교체해주세요 ---
 
@@ -34,3 +35,17 @@ class UserIngredientResponse(BaseModel):
         # Pydantic v1에서는 orm_mode = True
         from_attributes = True
 
+class MasterIngredientCreate(BaseModel):
+    name: str
+    category: Optional[str] = None
+    storage_type: Optional[str] = None
+
+# '재료 사전'의 정보를 반환할 때 사용할 스키마 (출력용)
+class MasterIngredientResponse(BaseModel):
+    id: int
+    name: str
+    category: Optional[str] = None
+    storage_type: Optional[str] = None
+
+    class Config:
+        from_attributes = True
