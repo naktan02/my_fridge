@@ -1,23 +1,26 @@
-# alembic/env.py  (상단부터 정리)
+# alembic/env.py (최종 수정본)
 import os, sys
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
 
 # 0) 경로/환경 먼저 잡기 ─────────────────────────────────────────────
-HERE = Path(__file__).resolve()                           # .../backend/alembic/env.py
-REPO_ROOT = HERE.parents[1]                               # repo-root
+HERE = Path(__file__).resolve()                           # 컨테이너 내부 경로: /app/alembic/env.py
+# ✅ 수정: Docker 컨테이너의 코드 루트는 /app 이므로, .parents[1]이 정확한 경로입니다.
+REPO_ROOT = HERE.parents[1]                               # 컨테이너 내부 경로: /app
 if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))                   # repo-root를 path에 추가 → backend.* 임포트 가능
+    sys.path.insert(0, str(REPO_ROOT))                   # /app 폴더를 파이썬 경로에 추가
 
-# .env 로드 (명시적 경로 우선, 없으면 자동 탐색)
-env_file = REPO_ROOT.parent / ".env" # In container, this will look for /.env
+# .env 로드 (Docker Compose가 변수를 주입하므로, 주로 로컬 CLI 실행 시를 위함)
+# 이 부분은 로컬 환경을 위해 그대로 유지합니다.
+env_file = REPO_ROOT.parent / ".env"
 if env_file.exists():
-    load_dotenv(env_file)                                 # override=False (기본값)
+    load_dotenv(env_file)
 else:
     load_dotenv(find_dotenv())
 
 # 1) 이제 앱 모듈 임포트 ───────────────────────────────────────────
-from backend.models import Base   # (혹은 sys.path를 backend로 잡았다면 from models import Base)
+# ✅ 수정: REPO_ROOT(/app)가 sys.path에 추가되었으므로 'backend' 접두사 없이 바로 임포트합니다.
+from models import Base
 
 # 2) Alembic 설정 ──────────────────────────────────────────────────
 from logging.config import fileConfig
