@@ -15,9 +15,9 @@ app = FastAPI(title="My Fridge API")
 def on_startup():
     create_db_and_tables()
 
-app.include_router(dishes.router, prefix="/api/v1", tags=["Dish Types"])
-app.include_router(ingredients.router, prefix="/api/v1", tags=["User Ingredients"])
-app.include_router(users.router, prefix="/api/v1") 
+app.include_router(dishes.router, prefix="/api/v1/dishes", tags=["요리 (Dishes & Recipes)"])
+app.include_router(ingredients.router, prefix="/api/v1/ingredients", tags=["나의 재료 (User Ingredients)"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["사용자 (Users)"])
 
 @app.get("/")
 def read_root():
