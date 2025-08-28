@@ -23,11 +23,23 @@ class RecipeBase(BaseModel):
 class RecipeCreate(RecipeBase):
     ingredients: List[RecipeIngredientInfo] # 재료 정보를 함께 받음
 
-# Recipe 정보를 반환하는 스키마
+# 1. Ingredient 모델을 위한 스키마
+class IngredientResponse(BaseModel):
+    name: str
+    class Config:
+        from_attributes = True
+
+# 2. RecipeIngredient 모델을 위한 스키마 (IngredientResponse를 중첩)
+class RecipeIngredientResponse(BaseModel):
+    quantity_display: Optional[str] = None
+    ingredient: IngredientResponse  # 'ingredient' 객체 안에 'name'이 있는 구조
+    class Config:
+        from_attributes = True
+
+# 3. Recipe 응답 스키마가 새로운 RecipeIngredientResponse를 사용하도록 수정
 class Recipe(RecipeBase):
     id: int
-    ingredients: List[RecipeIngredientInfo] # 재료 정보를 함께 반환
-
+    ingredients: List[RecipeIngredientResponse]
     class Config:
         from_attributes = True
 

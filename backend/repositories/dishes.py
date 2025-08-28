@@ -3,7 +3,6 @@
 from sqlalchemy.orm import Session, joinedload
 import models
 from schemas.dish import DishCreate, RecipeCreate
-# ✅ FastAPI의 HTTPException을 import합니다.
 from fastapi import HTTPException
 
 class DishRepository:
@@ -16,19 +15,15 @@ class DishRepository:
         if not ingredient:
             ingredient = models.Ingredient(name=name)
             self.db.add(ingredient)
-            self.db.flush() # commit 없이 id를 가져오기 위해 flush
+            self.db.flush()
         return ingredient
 
     def create_dish_with_recipes(self, dish_create: DishCreate) -> models.Dish:
         """Dish와 그에 속한 Recipe, RecipeIngredient를 트랜잭션으로 한 번에 생성합니다."""
         
-        # ✅ --- 코드 추가 시작 ---
-        # 요리를 생성하기 전, 같은 이름의 요리가 이미 존재하는지 확인합니다.
         existing_dish = self.db.query(models.Dish).filter(models.Dish.name == dish_create.name).first()
         if existing_dish:
-            # 존재한다면, 500 에러 대신 "이미 존재하는 요리"라는 명확한 에러를 발생시킵니다.
             raise HTTPException(status_code=409, detail="이미 존재하는 요리입니다.")
-        # ✅ --- 코드 추가 끝 ---
 
         try:
             # 1. Dish 모델 생성
@@ -39,7 +34,7 @@ class DishRepository:
                 tags=dish_create.tags
             )
             self.db.add(db_dish)
-            self.db.flush() # dish의 id를 먼저 확보
+            self.db.flush()
 
             # 2. Recipe 정보 처리
             for recipe_data in dish_create.recipes:
@@ -48,7 +43,7 @@ class DishRepository:
                     **recipe_data.model_dump(exclude={'ingredients'})
                 )
                 self.db.add(db_recipe)
-                self.db.flush() # recipe의 id 확보
+                self.db.flush()
 
                 # 3. RecipeIngredient 정보 처리
                 for ing_info in recipe_data.ingredients:
@@ -61,8 +56,15 @@ class DishRepository:
                     self.db.add(db_recipe_ingredient)
             
             self.db.commit()
-            self.db.refresh(db_dish)
-            return db_dish
+
+            # commit 후 id가 부여된 db_dish 객체를 이용해 관계가 모두 포함된 객체를 다시 조회합니다.
+            created_dish = self.db.query(models.Dish).options(
+                joinedload(models.Dish.recipes)
+                .joinedload(models.Recipe.ingredients)
+                .joinedload(models.RecipeIngredient.ingredient)
+            ).filter(models.Dish.id == db_dish.id).one()
+            
+            return created_dish
 
         except Exception as e:
             self.db.rollback()
@@ -102,8 +104,14 @@ class DishRepository:
                 self.db.add(db_recipe_ingredient)
             
             self.db.commit()
-            self.db.refresh(db_recipe)
-            return db_recipe
+
+            # commit 후 id가 부여된 db_recipe 객체를 이용해 관계가 모두 포함된 객체를 다시 조회합니다.
+            created_recipe = self.db.query(models.Recipe).options(
+                joinedload(models.Recipe.ingredients)
+                .joinedload(models.RecipeIngredient.ingredient)
+            ).filter(models.Recipe.id == db_recipe.id).one()
+
+            return created_recipe
 
         except Exception as e:
             self.db.rollback()
