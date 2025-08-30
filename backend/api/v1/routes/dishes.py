@@ -10,7 +10,7 @@ from schemas.dish import Dish, DishCreate, Recipe, RecipeCreate
 from repositories.dishes import DishRepository
 from database import get_db
 # ✅ 수정: 관리자 권한 확인을 위한 is_admin import
-from auth.dependencies import is_admin
+from auth.dependencies import get_current_user, is_admin
 
 router = APIRouter(tags=["Dishes"])
 
@@ -42,3 +42,14 @@ def add_recipe_to_dish(
     admin_user: models.User = Depends(is_admin)
 ):
     return repo.add_recipe_to_dish(dish_id=dish_id, recipe_data=recipe_create)
+
+# ✅ 추가: 요리 추천 API
+@router.get("/recommendations", response_model=List[Dish])
+def get_recommended_dishes(
+    repo: DishRepository = Depends(get_repo),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    **사용자용 API** - 현재 보유한 재료로 만들 수 있는 요리를 추천합니다.
+    """
+    return repo.get_dishes_by_user_ingredients(user_id=current_user.id)
