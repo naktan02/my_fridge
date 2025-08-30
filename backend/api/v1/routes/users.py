@@ -18,7 +18,7 @@ from utils.security import verify_password
 # decode_responses=True는 Redis에서 받은 데이터를 자동으로 UTF-8 문자열로 변환해줍니다.
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(tags=["Users"])
 
 
 # --- UserRepository를 가져오는 의존성 함수 ---

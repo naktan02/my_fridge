@@ -1,95 +1,65 @@
-import os
-import sys
-from logging.config import fileConfig
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# alembic/env.py (최종 수정본)
+import os, sys
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
+
+# 0) 경로/환경 먼저 잡기 ─────────────────────────────────────────────
+HERE = Path(__file__).resolve()                           # 컨테이너 내부 경로: /app/alembic/env.py
+# ✅ 수정: Docker 컨테이너의 코드 루트는 /app 이므로, .parents[1]이 정확한 경로입니다.
+REPO_ROOT = HERE.parents[1]                               # 컨테이너 내부 경로: /app
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))                   # /app 폴더를 파이썬 경로에 추가
+
+# .env 로드 (Docker Compose가 변수를 주입하므로, 주로 로컬 CLI 실행 시를 위함)
+# 이 부분은 로컬 환경을 위해 그대로 유지합니다.
+env_file = REPO_ROOT.parent / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
+else:
+    load_dotenv(find_dotenv())
+
+# 1) 이제 앱 모듈 임포트 ───────────────────────────────────────────
+# ✅ 수정: REPO_ROOT(/app)가 sys.path에 추가되었으므로 'backend' 접두사 없이 바로 임포트합니다.
 from models import Base
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
 
+# 2) Alembic 설정 ──────────────────────────────────────────────────
+from logging.config import fileConfig
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
+if config.config_file_name:
+    fileConfig(config.config_file_name)
 
-db_url = os.getenv("DATABASE_URL")
+# DB URL 우선순위: env → alembic.ini
+db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 if not db_url:
-    # ini에 값이 있으면 그걸 쓰고, 없으면 에러
-    db_url = config.get_main_option("sqlalchemy.url")
-if not db_url:
-    raise RuntimeError(
-        "DATABASE_URL not set and alembic.ini has no sqlalchemy.url. "
-        "Set .env or fill alembic.ini."
-)
+    raise RuntimeError("DATABASE_URL not set and alembic.ini has no sqlalchemy.url")
 
-# 드라이버 명시 권장: postgresql+psycopg2://...
+# 드라이버 정규화 (psycopg3가 있으면 그걸, 없으면 psycopg2)
 if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    try:
+        import psycopg  # v3
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    except Exception:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 config.set_main_option("sqlalchemy.url", db_url)
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
-
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-
+    context.configure(url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
 
-
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
+    connectable = engine_from_config(config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
-
+        context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()

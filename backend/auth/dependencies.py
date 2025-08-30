@@ -30,3 +30,15 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="사용자를 찾을 수 없습니다.")
     
     return user
+
+def is_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
+    """
+    현재 로그인한 사용자가 관리자인지 확인하는 의존성 함수.
+    관리자가 아니면 403 Forbidden 에러를 발생시킵니다.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="이 작업을 수행할 권한이 없습니다.",
+        )
+    return current_user

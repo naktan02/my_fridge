@@ -1,17 +1,118 @@
-from sqlalchemy.orm import Session
-import models
-from schemas import dish
+# /backend/repositories/dishes.py
 
-class DishTypeRepository:
+from sqlalchemy.orm import Session, joinedload
+import models
+from schemas.dish import DishCreate, RecipeCreate
+from fastapi import HTTPException
+
+class DishRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_all(self):
-        return self.db.query(models.DishType).all()
+    def _get_or_create_ingredient(self, name: str) -> models.Ingredient:
+        """재료가 없으면 새로 생성하여 반환합니다."""
+        ingredient = self.db.query(models.Ingredient).filter(models.Ingredient.name == name).first()
+        if not ingredient:
+            ingredient = models.Ingredient(name=name)
+            self.db.add(ingredient)
+            self.db.flush()
+        return ingredient
 
-    def create(self, dish_type_create: dish.DishTypeCreate):
-        db_dish_type = models.DishType(**dish_type_create.model_dump())
-        self.db.add(db_dish_type)
-        self.db.commit()
-        self.db.refresh(db_dish_type)
-        return db_dish_type
+    def create_dish_with_recipes(self, dish_create: DishCreate) -> models.Dish:
+        """Dish와 그에 속한 Recipe, RecipeIngredient를 트랜잭션으로 한 번에 생성합니다."""
+        
+        existing_dish = self.db.query(models.Dish).filter(models.Dish.name == dish_create.name).first()
+        if existing_dish:
+            raise HTTPException(status_code=409, detail="이미 존재하는 요리입니다.")
+
+        try:
+            # 1. Dish 모델 생성
+            db_dish = models.Dish(
+                name=dish_create.name,
+                description=dish_create.description,
+                cuisine_type=dish_create.cuisine_type,
+                tags=dish_create.tags
+            )
+            self.db.add(db_dish)
+            self.db.flush()
+
+            # 2. Recipe 정보 처리
+            for recipe_data in dish_create.recipes:
+                db_recipe = models.Recipe(
+                    dish_id=db_dish.id,
+                    **recipe_data.model_dump(exclude={'ingredients'})
+                )
+                self.db.add(db_recipe)
+                self.db.flush()
+
+                # 3. RecipeIngredient 정보 처리
+                for ing_info in recipe_data.ingredients:
+                    db_ingredient = self._get_or_create_ingredient(ing_info.name)
+                    db_recipe_ingredient = models.RecipeIngredient(
+                        recipe_id=db_recipe.id,
+                        ingredient_id=db_ingredient.id,
+                        quantity_display=ing_info.quantity_display
+                    )
+                    self.db.add(db_recipe_ingredient)
+            
+            self.db.commit()
+
+            # commit 후 id가 부여된 db_dish 객체를 이용해 관계가 모두 포함된 객체를 다시 조회합니다.
+            created_dish = self.db.query(models.Dish).options(
+                joinedload(models.Dish.recipes)
+                .joinedload(models.Recipe.ingredients)
+                .joinedload(models.RecipeIngredient.ingredient)
+            ).filter(models.Dish.id == db_dish.id).one()
+            
+            return created_dish
+
+        except Exception as e:
+            self.db.rollback()
+            raise e
+
+    def get_all_dishes(self) -> list[models.Dish]:
+        """모든 Dish 정보를 레시피, 재료 정보와 함께 가져옵니다."""
+        return self.db.query(models.Dish).options(
+            joinedload(models.Dish.recipes)
+            .joinedload(models.Recipe.ingredients)
+            .joinedload(models.RecipeIngredient.ingredient)
+        ).all()
+        
+    def add_recipe_to_dish(self, dish_id: int, recipe_data: RecipeCreate) -> models.Recipe:
+        """기존 Dish에 새로운 Recipe를 추가합니다."""
+        db_dish = self.db.query(models.Dish).filter(models.Dish.id == dish_id).first()
+        if not db_dish:
+            raise HTTPException(status_code=404, detail="요리를 찾을 수 없습니다.")
+        
+        try:
+            # Recipe 모델 생성
+            db_recipe = models.Recipe(
+                dish_id=dish_id,
+                **recipe_data.model_dump(exclude={'ingredients'})
+            )
+            self.db.add(db_recipe)
+            self.db.flush()
+
+            # RecipeIngredient 정보 처리
+            for ing_info in recipe_data.ingredients:
+                db_ingredient = self._get_or_create_ingredient(ing_info.name)
+                db_recipe_ingredient = models.RecipeIngredient(
+                    recipe_id=db_recipe.id,
+                    ingredient_id=db_ingredient.id,
+                    quantity_display=ing_info.quantity_display
+                )
+                self.db.add(db_recipe_ingredient)
+            
+            self.db.commit()
+
+            # commit 후 id가 부여된 db_recipe 객체를 이용해 관계가 모두 포함된 객체를 다시 조회합니다.
+            created_recipe = self.db.query(models.Recipe).options(
+                joinedload(models.Recipe.ingredients)
+                .joinedload(models.RecipeIngredient.ingredient)
+            ).filter(models.Recipe.id == db_recipe.id).one()
+
+            return created_recipe
+
+        except Exception as e:
+            self.db.rollback()
+            raise e
