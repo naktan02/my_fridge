@@ -20,6 +20,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      elasticsearch:
+        condition: service_healthy
 
   db:
     image: pgvector/pgvector:pg16
@@ -44,7 +46,27 @@ services:
     volumes:
       - redis_data:/data
 
+  # ✅ elasticsearch 서비스 추가
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    container_name: my_fridge_es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # 개발 환경에서만 보안 기능 비활성화
+      - ELASTIC_PLUGINS=analysis-nori # nori 형태소 분석기 설치
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
 volumes:
   postgres_data:
   redis_data:
   uv_venv:
+  elasticsearch_data:
