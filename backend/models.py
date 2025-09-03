@@ -43,12 +43,13 @@ class Dish(Base):
     __tablename__ = "dishes"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    description = Column(Text, nullable=True)
     cuisine_type = Column(String, nullable=True) # 한식, 중식, 양식 등
+    semantic_description = Column(Text, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
     tags = Column(ARRAY(String), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
+    
     recipes = relationship("Recipe", back_populates="dish")
 
 class Recipe(Base):

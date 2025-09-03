@@ -62,3 +62,20 @@ class Dish(DishBase):
 
     class Config:
         from_attributes = True
+        
+        
+class DishSearchResult(BaseModel):
+    """개별 검색 결과를 위한 스키마"""
+    score: Optional[float] = None  # Elasticsearch의 연관성 점수
+    dish_id: int
+    recipe_id: int
+    dish_name: str
+    thumbnail_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class SearchResponse(BaseModel):
+    """전체 검색 응답을 위한 스키마"""
+    total: int # 총 검색 결과 개수
+    results: List[DishSearchResult]
