@@ -1,6 +1,7 @@
 # /backend/repositories/dishes.py
 
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select, distinct
 import models
 from schemas.dish import DishCreate, RecipeCreate
 from fastapi import HTTPException
@@ -116,3 +117,35 @@ class DishRepository:
         except Exception as e:
             self.db.rollback()
             raise e
+        
+    def get_dishes_by_user_ingredients(self, user_id: int) -> list[models.Dish]:
+        """
+        특정 사용자가 보유한 재료를 하나 이상 포함하는 모든 요리 목록을 반환합니다.
+        """
+        # 1. 사용자가 보유한 모든 재료의 ID를 가져옵니다.
+        user_ingredient_ids_query = select(models.UserIngredient.ingredient_id).where(
+            models.UserIngredient.user_id == user_id
+        )
+        user_ingredient_ids = self.db.execute(user_ingredient_ids_query).scalars().all()
+
+        if not user_ingredient_ids:
+            return [] # 보유 재료가 없으면 빈 리스트 반환
+
+        # 2. 해당 재료 ID를 포함하는 레시피가 있는 모든 Dish의 ID를 중복 없이 찾습니다.
+        dish_ids_query = (
+            select(distinct(models.Dish.id))
+            .join(models.Dish.recipes)
+            .join(models.Recipe.ingredients)
+            .where(models.RecipeIngredient.ingredient_id.in_(user_ingredient_ids))
+        )
+        dish_ids = self.db.execute(dish_ids_query).scalars().all()
+        
+        if not dish_ids:
+            return []
+
+        # 3. 찾은 Dish ID에 해당하는 Dish 객체들을 모든 관계와 함께 조회하여 반환합니다.
+        return self.db.query(models.Dish).options(
+            joinedload(models.Dish.recipes)
+            .joinedload(models.Recipe.ingredients)
+            .joinedload(models.RecipeIngredient.ingredient)
+        ).filter(models.Dish.id.in_(dish_ids)).all()
