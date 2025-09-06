@@ -1,11 +1,11 @@
 # /backend/api/v1/routes/dishes.py (코드 추가)
 
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from sqlalchemy.orm import Session
-from typing import List
-
+from typing import List, Optional
+import asyncio
 import models
-from schemas.dish import Dish, DishCreate, Recipe, RecipeCreate 
+from schemas.dish import Dish, DishCreate, Recipe, RecipeCreate , SearchResponse
 from repositories.dishes import DishRepository
 from database import get_db
 from auth.dependencies import get_current_user, is_admin
@@ -28,10 +28,11 @@ def get_search_repo(es: AsyncElasticsearch = Depends(get_es_client)) -> SearchRe
     return SearchRepository(es_client=es)
     
 # --- 관리자용 배치 인덱싱 API ---
-@router.post("/admin/search/reindex", status_code=202) # 202 Accepted: 작업이 접수되었음을 의미
+@router.post("/admin/search/reindex", status_code=202)
 async def reindex_dishes_for_search(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    # ✅ 개선: 의존성 주입 함수를 사용하도록 통일합니다.
     dish_repo: DishRepository = Depends(get_repo),
     search_repo: SearchRepository = Depends(get_search_repo),
     embedding_model: SentenceTransformer = Depends(get_embedding_model),
@@ -39,63 +40,69 @@ async def reindex_dishes_for_search(
 ):
     """
     **관리자용 API** - PostgreSQL의 모든 요리 데이터를 Elasticsearch에 재색인합니다.
-    시간이 오래 걸릴 수 있으므로 백그라운드 작업으로 처리됩니다.
+    대용량 데이터를 처리하기 위해 백그라운드에서 배치 작업으로 수행됩니다.
     """
-    
-    def background_reindexing():
+
+    # ✅ 개선 1: 함수 자체를 async def로 만들어 FastAPI가 직접 await하게 합니다.
+    async def background_reindexing():
         """백그라운드에서 실행될 실제 재색인 로직"""
         print("Starting background reindexing...")
-        
-        # 1. PostgreSQL에서 모든 요리 데이터 가져오기
-        all_dishes = dish_repo.get_all_dishes()
-        
-        # 2. Elasticsearch에 넣을 문서 형태로 가공
-        documents = []
-        texts_to_embed = []
-        for dish in all_dishes:
-            for recipe in dish.recipes:
-                ingredient_names = [item.ingredient.name for item in recipe.ingredients]
-                # 임베딩할 텍스트 생성 (요리명, 재료, 조리법 등을 조합)
-                text_for_embedding = f"요리명: {dish.name}. 재료: {', '.join(ingredient_names)}. 설명: {dish.semantic_description}"
-                
-                texts_to_embed.append(text_for_embedding)
-                
-                # Elasticsearch 문서 구조 생성
-                doc = {
-                    "_index": DISHES_INDEX_NAME,
-                    "_id": f"{dish.id}_{recipe.id}",
-                    "_source": {
-                        "dish_id": dish.id,
-                        "recipe_id": recipe.id,
-                        "dish_name": dish.name,
-                        "thumbnail_url": dish.thumbnail_url,
-                        "ingredients": ingredient_names
+        BATCH_SIZE = 100  # 한 번에 처리할 문서 개수
+        offset = 0
+        total_processed = 0
+
+        while True:
+            # ✅ 개선 2 & 3: 배치 단위로 데이터를 가져옵니다 (Eager Loading 적용됨).
+            dishes_batch = dish_repo.get_all_dishes(skip=offset, limit=BATCH_SIZE)
+            if not dishes_batch:
+                break # 처리할 데이터가 더 이상 없으면 루프 종료
+
+            texts_for_core_identity = []
+            texts_for_context = []
+            documents_metadata = []
+
+            for dish in dishes_batch:
+                for recipe in dish.recipes:
+                    ingredient_names = [item.ingredient.name for item in recipe.ingredients]
+                    core_text = f"{dish.name}, {', '.join(ingredient_names)}"
+                    texts_for_core_identity.append(core_text)
+                    context_text = dish.semantic_description or ""
+                    texts_for_context.append(context_text)
+                    doc_meta = {
+                        "_index": DISHES_INDEX_NAME, "_id": f"{dish.id}_{recipe.id}",
+                        "dish_id": dish.id, "recipe_id": recipe.id,
+                        "dish_name": dish.name, 
+                        "recipe_title": recipe.title, # ✅ 추가: 레시피 제목
+                        "thumbnail_url": recipe.thumbnail_url, # ✅ 수정: dish -> recipe
+                        "ingredients": ingredient_names,
                     }
-                }
-                documents.append(doc)
+                    documents_metadata.append(doc_meta)
 
-        # 3. AI 모델로 텍스트들을 한번에 벡터로 변환 (배치 처리)
-        if texts_to_embed:
-            embeddings = embedding_model.encode(texts_to_embed)
-            
-            # 3. 문서에 생성된 벡터만 추가
-            for doc, embedding in zip(documents, embeddings):
-                doc["recipe_embedding"] = embedding.tolist()
-        
-            # 4. Elasticsearch에 최종 문서 대량 색인
-            # documents 리스트를 bulk 헬퍼에 맞게 action 형태로 변환
-            actions = [
-                {"_index": doc.pop("_index"), "_id": doc.pop("_id"), "_source": doc}
-                for doc in documents
-            ]
-            import asyncio
-            asyncio.run(search_repo.bulk_index_dishes(actions))
-            
-        print("Background reindexing finished.")
+            if documents_metadata:
+                # CPU 바운드 작업을 이벤트 루프에서 분리
+                loop = asyncio.get_running_loop()
+                core_embeddings, context_embeddings = await asyncio.gather(
+                    loop.run_in_executor(None, embedding_model.encode, texts_for_core_identity),
+                    loop.run_in_executor(None, embedding_model.encode, texts_for_context)
+                )
 
-    # 백그라운드 작업으로 재색인 함수를 실행
+                final_actions = []
+                for meta, core_vec, ctx_vec in zip(documents_metadata, core_embeddings, context_embeddings):
+                    meta["core_identity_embedding"] = core_vec.tolist()
+                    meta["context_embedding"] = ctx_vec.tolist()
+                    final_actions.append(meta)
+
+                # ✅ 개선 1: asyncio.run() 대신 await을 사용합니다.
+                await search_repo.bulk_index_dishes(final_actions)
+                total_processed += len(final_actions)
+                print(f"Processed batch of {len(final_actions)}. Total processed: {total_processed}")
+
+            offset += BATCH_SIZE
+            await asyncio.sleep(1) # DB와 ES에 가해지는 부하를 줄이기 위한 약간의 딜레이
+
+        print(f"Background reindexing finished. Total {total_processed} documents.")
+
     background_tasks.add_task(background_reindexing)
-    
     return {"message": "데이터 재색인 작업이 백그라운드에서 시작되었습니다."}
 
 # 관리자용: 새로운 요리와 레시피 생성
@@ -134,3 +141,37 @@ def get_recommended_dishes(
     **사용자용 API** - 현재 보유한 재료로 만들 수 있는 요리를 추천합니다.
     """
     return repo.get_dishes_by_user_ingredients(user_id=current_user.id)
+
+
+@router.get("/search", response_model=SearchResponse)
+async def search_dishes_endpoint(
+    request: Request, # 이벤트 루프에 접근하기 위해 필요
+    q: Optional[str] = None,
+    ingredients: Optional[str] = None, # 콤마로 구분된 문자열
+    search_repo: SearchRepository = Depends(get_search_repo),
+    embedding_model: SentenceTransformer = Depends(get_embedding_model)
+):
+    """
+    **사용자용 API** - 키워드, 보유 재료를 사용하여 요리를 검색합니다.
+    - `q`: 검색어 (예: "김치찌개", "얼큰한 국물요리")
+    - `ingredients`: 보유 재료 목록 (예: "돼지고기,두부,김치")
+    """
+    query_vector = None
+    if q:
+        # ✅ 개선: CPU 바운드 작업을 이벤트 루프에서 분리하여 비동기 실행
+        loop = asyncio.get_running_loop()
+        query_vector = await loop.run_in_executor(
+            None,  # 기본 스레드 풀 사용
+            embedding_model.encode,
+            q
+        )
+        query_vector = query_vector.tolist()
+
+    user_ingredients_list = ingredients.split(',') if ingredients else None
+
+    search_results = await search_repo.search_dishes(
+        query=q,
+        query_vector=query_vector,
+        user_ingredients=user_ingredients_list
+    )
+    return search_results

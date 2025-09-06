@@ -71,13 +71,16 @@ class DishRepository:
             self.db.rollback()
             raise e
 
-    def get_all_dishes(self) -> list[models.Dish]:
-        """모든 Dish 정보를 레시피, 재료 정보와 함께 가져옵니다."""
+    def get_all_dishes(self, skip: int = 0, limit: int = 100) -> list[models.Dish]:
+        """
+        ✅ 수정: Eager Loading과 Pagination을 적용하여 모든 Dish 정보를 가져옵니다.
+        """
         return self.db.query(models.Dish).options(
+            # ✅ 개선: N+1 문제를 해결하기 위해 연관된 모든 데이터를 한 번의 쿼리로 가져옵니다.
             joinedload(models.Dish.recipes)
             .joinedload(models.Recipe.ingredients)
             .joinedload(models.RecipeIngredient.ingredient)
-        ).all()
+        ).offset(skip).limit(limit).all()
         
     def add_recipe_to_dish(self, dish_id: int, recipe_data: RecipeCreate) -> models.Recipe:
         """기존 Dish에 새로운 Recipe를 추가합니다."""

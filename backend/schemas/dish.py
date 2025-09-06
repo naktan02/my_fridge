@@ -12,12 +12,13 @@ class RecipeIngredientInfo(BaseModel):
 
 # Recipe의 기본 정보 (생성 시에는 id가 없음)
 class RecipeBase(BaseModel):
-    author: Optional[str] = None
+    title: Optional[str] = None
     difficulty: Optional[int] = None
     serving_size: Optional[str] = None
     cooking_time: Optional[int] = None
     instructions: str
     youtube_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
 
 # Recipe 생성 시 입력받는 스키마
 class RecipeCreate(RecipeBase):
@@ -47,7 +48,6 @@ class Recipe(RecipeBase):
 
 class DishBase(BaseModel):
     name: str
-    description: Optional[str] = None
     cuisine_type: Optional[str] = None
     tags: Optional[List[str]] = None
 
@@ -70,6 +70,7 @@ class DishSearchResult(BaseModel):
     dish_id: int
     recipe_id: int
     dish_name: str
+    recipe_title: Optional[str] = None 
     thumbnail_url: Optional[str] = None
 
     class Config:

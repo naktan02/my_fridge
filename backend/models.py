@@ -45,7 +45,6 @@ class Dish(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     cuisine_type = Column(String, nullable=True) # 한식, 중식, 양식 등
     semantic_description = Column(Text, nullable=True)
-    thumbnail_url = Column(String, nullable=True)
     tags = Column(ARRAY(String), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -56,12 +55,13 @@ class Recipe(Base):
     __tablename__ = "recipes"
     id = Column(Integer, primary_key=True, index=True)
     dish_id = Column(Integer, ForeignKey("dishes.id"), nullable=False)
-    author = Column(String, nullable=True)
+    title = Column(String, nullable=True)
     difficulty = Column(Integer)
     serving_size = Column(String)
     cooking_time = Column(Integer) # 분 단위
     instructions = Column(Text, nullable=False)
     youtube_url = Column(String, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

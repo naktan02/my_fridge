@@ -7,7 +7,7 @@ import os
 es_client = None
 
 # --- 1. 인덱스 이름 정의 ---
-DISHES_INDEX_NAME = "dishes" 
+DISHES_INDEX_NAME = "dishes"
 
 async def create_dishes_index():
     """'dishes' 인덱스가 없으면 생성합니다."""
@@ -16,18 +16,24 @@ async def create_dishes_index():
             "properties": {
                 # --- 검색에 사용될 필드들 ---
                 "dish_name": {"type": "text", "analyzer": "nori"},
+                "recipe_title": {"type": "text", "analyzer": "nori"},
                 "ingredients": {"type": "keyword"},
-                "recipe_embedding": {
+
+                # ✅ 수정: 2개의 분리된 벡터 필드를 정의합니다.
+                "core_identity_embedding": {
                     "type": "dense_vector", "dims": 1024, "index": True, "similarity": "cosine"
                 },
-                
+                "context_embedding": {
+                    "type": "dense_vector", "dims": 1024, "index": True, "similarity": "cosine"
+                },
+
                 # --- 식별 및 결과 표시용 필드들 ---
                 "dish_id": {"type": "integer"},
                 "recipe_id": {"type": "integer"},
                 "thumbnail_url": {"type": "keyword", "index": False}
             }
         }
-        
+
         print(f"Creating index '{DISHES_INDEX_NAME}'...")
         await es_client.indices.create(
             index=DISHES_INDEX_NAME,
@@ -42,12 +48,12 @@ async def lifespan(app):
     es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
     es_client = AsyncElasticsearch(es_url)
     print("Elasticsearch client connected.")
-    
+
     # --- 2. 앱 시작 시 인덱스 생성 함수 호출 ---
     await create_dishes_index()
-    
+
     yield
-    
+
     await es_client.close()
     print("Elasticsearch client disconnected.")
 
