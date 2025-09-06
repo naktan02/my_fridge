@@ -1,6 +1,7 @@
 # 베이스: Python 포함 uv 이미지 (Debian 계열)
 FROM ghcr.io/astral-sh/uv:python3.10-bookworm
 
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # 1) 의존성 스펙만 먼저 복사 → 레이어 캐시 최대 활용

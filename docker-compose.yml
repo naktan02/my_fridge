@@ -4,17 +4,24 @@ services:
       context: ./backend
     container_name: my_fridge_api
     command: >
-      sh -c "uv run alembic upgrade head &&
-             uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "
+        while ! curl -s http://elasticsearch:9200; do
+          echo 'Waiting for Elasticsearch...'
+          sleep 5
+        done;
+        echo 'Elasticsearch is up!';
+        uv run alembic upgrade head &&
+        uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      "
     ports:
       - "${HOST_API_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
-      - uv_venv:/app/.venv         # .venv를 네임드 볼륨으로 분리해서 가리지 않게
+      - uv_venv:/app/.venv
     env_file:
       - .env
     environment:
-      - PYTHONPATH=.               # 필요 없을 수도 있지만 안전빵
+      - PYTHONPATH=.
     depends_on:
       db:
         condition: service_healthy

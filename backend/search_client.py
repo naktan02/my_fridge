@@ -46,7 +46,10 @@ async def lifespan(app):
     """FastAPI 앱 시작/종료 시 이벤트 처리"""
     global es_client
     es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-    es_client = AsyncElasticsearch(es_url)
+    es_client = AsyncElasticsearch(
+        es_url,
+        headers={"Accept": "application/vnd.elasticsearch+json; compatible-with=8"}
+    )
     print("Elasticsearch client connected.")
 
     # --- 2. 앱 시작 시 인덱스 생성 함수 호출 ---
