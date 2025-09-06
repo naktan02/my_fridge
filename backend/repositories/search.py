@@ -24,45 +24,72 @@ class SearchRepository:
         if not query and not user_ingredients:
             return {"total": 0, "results": []}
 
-        # 1. Elasticsearch에 보낼 기본 쿼리 구조
-        es_query = {
+        # 1. 재료 필터 조건 생성
+        filter_clauses = []
+        if user_ingredients:
+            for ingredient in user_ingredients:
+                filter_clauses.append({"term": {"ingredients": ingredient}})
+        
+        # 2. Elasticsearch 쿼리 본문(body) 구성
+        es_body = {
             "size": size,
             "_source": ["dish_id", "recipe_id", "dish_name", "thumbnail_url"]
         }
 
-        # 2. 자연어 쿼리가 있는 경우: KNN 벡터 검색 추가
         if query:
+            # --- ✅ 하이브리드 검색을 위한 쿼리 재구성 ---
             query_vector = embedding_model.encode(query).tolist()
-            es_query["knn"] = {
-                "field": "recipe_embedding",
-                "query_vector": query_vector,
-                "k": 10,
-                "num_candidates": 50
+            
+            es_body["query"] = {
+                "bool": {
+                    # 재료 필터는 여기에 적용
+                    "filter": filter_clauses
+                }
+            }
+            
+            # RRF를 사용하여 키워드 검색과 벡터 검색 결과를 결합
+            es_body["rank"] = {
+                "rrf": [
+                    {
+                        "query": {
+                            "match": {
+                                "dish_name": {
+                                    "query": query,
+                                    "boost": 1.0 # 키워드 검색 가중치
+                                }
+                            }
+                        },
+                        "window_size": 50
+                    },
+                    {
+                        "query": {
+                            "knn": {
+                                "field": "recipe_embedding",
+                                "query_vector": query_vector,
+                                "k": 10,
+                                "num_candidates": 50
+                            }
+                        },
+                        "window_size": 50,
+                        "rank_constant": 20
+                    }
+                ]
+            }
+        else:
+            # 쿼리가 없고 재료 필터만 있는 경우
+            es_body["query"] = {
+                "bool": {
+                    "filter": filter_clauses
+                }
             }
 
-        # 3. 재료 필터가 있는 경우: 키워드 필터링 추가
-        filter_clauses = []
-        if user_ingredients:
-            # 모든 재료를 포함하는 레시피를 찾기 위해 각 재료에 대한 term 쿼리 생성
-            for ingredient in user_ingredients:
-                filter_clauses.append({"term": {"ingredients": ingredient}})
-        
-        # 쿼리와 필터를 결합
-        if filter_clauses:
-            if "knn" in es_query:
-                # KNN 검색 결과 내에서 추가로 필터링
-                es_query["knn"]["filter"] = filter_clauses
-            else:
-                # 키워드 필터링만 수행
-                es_query["query"] = {"bool": {"filter": filter_clauses}}
-
-        # 4. Elasticsearch에 검색 실행
+        # 3. Elasticsearch에 검색 실행
         response = await self.es_client.search(
             index=DISHES_INDEX_NAME,
-            body=es_query
+            body=es_body
         )
-
-        # 5. 결과 파싱 및 반환
+        
+        # ... (결과 파싱 부분은 기존과 동일)
         hits = response["hits"]["hits"]
         total = response["hits"]["total"]["value"]
         results = [

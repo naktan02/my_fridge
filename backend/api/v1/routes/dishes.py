@@ -56,7 +56,7 @@ async def reindex_dishes_for_search(
             for recipe in dish.recipes:
                 ingredient_names = [item.ingredient.name for item in recipe.ingredients]
                 # 임베딩할 텍스트 생성 (요리명, 재료, 조리법 등을 조합)
-                text_for_embedding = dish.semantic_description
+                text_for_embedding = f"요리명: {dish.name}. 재료: {', '.join(ingredient_names)}. 설명: {dish.semantic_description}"
                 
                 texts_to_embed.append(text_for_embedding)
                 
