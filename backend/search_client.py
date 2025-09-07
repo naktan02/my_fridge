@@ -7,17 +7,16 @@ es_client: AsyncElasticsearch | None = None
 
 DISHES_INDEX_NAME = "dishes"
 
-async def _wait_for_es(es: AsyncElasticsearch, retries=12, base=0.5):
+async def _wait_for_es(es, retries=6, base=0.25, max_delay=2.0):
     last = None
     for i in range(retries):
         try:
-            await es.info()
+            # cluster health로 명확히 대기하되, 짧은 timeout 사용
+            await es.cluster.health(wait_for_status="yellow", timeout="5s")
             return
         except Exception as e:
             last = e
-            delay = base * (1.5 ** i)
-            logger.warning("ES not ready (%s). retry %d/%d in %.2fs",
-                           e.__class__.__name__, i+1, retries, delay)
+            delay = min(max_delay, base * (1.5 ** i))
             await asyncio.sleep(delay)
     raise RuntimeError(f"ES not reachable: {last}")
 

@@ -5,11 +5,6 @@ services:
     container_name: my_fridge_api
     command: >
       sh -c "
-        while ! curl -s http://elasticsearch:9200; do
-          echo 'Waiting for Elasticsearch...'
-          sleep 5
-        done;
-        echo 'Elasticsearch is up!';
         uv run alembic upgrade head &&
         uv run uvicorn main:app --host 0.0.0.0 --port 8000
       "
@@ -20,8 +15,6 @@ services:
       - uv_venv:/app/.venv
     env_file:
       - .env
-    environment:
-      - PYTHONPATH=.
     depends_on:
       db:
         condition: service_healthy
@@ -29,6 +22,8 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_healthy
+    environment:
+      - ES_HOST=http://elasticsearch:9200
 
   db:
     image: pgvector/pgvector:pg16
@@ -55,22 +50,34 @@ services:
 
   # ✅ elasticsearch 서비스 추가
   elasticsearch:
-    # image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0  # ← 지우고
-    build: ./backend/es                                                  # ← 이걸로 빌드
+    build: ./backend/es
     container_name: my_fridge_es
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-    ports:
-      - "9200:9200"
-      - "9300:9300"
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ["9200:9200"]         # ← 단일 노드면 9300 불필요. 깎자.
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
-      interval: 10s
+      # curl/wget 없이도 동작. HTTP 200 또는 "You Know, for Search" 확인.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200 && echo -e \"GET / HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q \"You Know, for Search\\|HTTP/1.1 200\" <&3'"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 30
+      start_period: 30s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.19.0
+    depends_on:
+      - elasticsearch       # ← 이름 맞춤
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"   # ← 서비스명 사용
+      NODE_OPTIONS: "--max-old-space-size=1024"
+    ports: ["5601:5601"]
       
 volumes:
   postgres_data:

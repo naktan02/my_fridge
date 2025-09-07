@@ -1,16 +1,61 @@
-# /backend/repositories/search.py (전체 교체)
+# /backend/repositories/search.py
 
-import asyncio
+import logging
+from typing import List, Dict, Any, Optional
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
-from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
 
 from search_client import DISHES_INDEX_NAME
+
+logger = logging.getLogger(__name__)
 
 class SearchRepository:
     def __init__(self, es_client: AsyncElasticsearch):
         self.es_client = es_client
+
+    # 내부 헬퍼: 재료 필터 (ALL / ANY / RATIO 지원)
+    def _ingredient_filter(
+        self,
+        user_ingredients: Optional[List[str]],
+        mode: str = "ALL",   # 기본값: 전부 포함(AND)
+        ratio: float = 0.6    # RATIO 모드에서 최소 일치 비율
+    ) -> Optional[Dict[str, Any]]:
+        if not user_ingredients:
+            return None
+
+        # 입력 정규화(공백/대소문자 이슈 방지 – 색인도 동일 정책 권장)
+        terms = [ing.strip() for ing in user_ingredients if ing and ing.strip()]
+        if not terms:
+            return None
+
+        if mode == "ALL":
+            # 모든 재료가 포함되어야 함 (AND)
+            return {"bool": {"filter": [{"term": {"ingredients": ing}} for ing in terms]}}
+
+        if mode == "ANY":
+            # 하나라도 포함되면 통과 (OR)
+            return {
+                "bool": {
+                    "should": [{"term": {"ingredients": ing}} for ing in terms],
+                    "minimum_should_match": 1
+                }
+            }
+
+        if mode == "RATIO":
+            # 비율 기반 부분 일치
+            return {
+                "terms_set": {
+                    "ingredients": {
+                        "terms": terms,
+                        "minimum_should_match_script": {
+                            "source": "Math.ceil(params.num_terms * params.ratio)",
+                            "params": {"ratio": ratio}
+                        }
+                    }
+                }
+            }
+
+        return None
 
     async def search_dishes(
         self,
@@ -20,77 +65,86 @@ class SearchRepository:
         size: int = 10
     ) -> Dict[str, Any]:
         """
-        키워드, 벡터, 재료 필터를 모두 사용하는 다중 채널 하이브리드 검색을 수행합니다.
+        키워드(BM25), 벡터(kNN), 재료 필터를 조합한 하이브리드 검색.
+        - ES 8.x RRF 문법: retriever.rrf.retrievers[*] (standard/knn)
+        - query_vector가 없으면 BM25만 수행(안전한 강등)
         """
         if not query and not user_ingredients:
             return {"total": 0, "results": []}
 
-        # 1. 재료 필터 조건 생성
-        filter_clauses = []
-        if user_ingredients:
-            for ingredient in user_ingredients:
-                filter_clauses.append({"term": {"ingredients": ingredient}})
-
-        # 2. Elasticsearch 쿼리 본문(body) 구성
-        es_body = {
+        body: Dict[str, Any] = {
             "size": size,
             "_source": ["dish_id", "recipe_id", "dish_name", "thumbnail_url"],
-            "track_total_hits": True  # ✅ 개선: 정확한 total 값 추적
+            "track_total_hits": True
         }
 
+        # 1) 재료 필터(기본 ALL). 필요하면 아래 mode를 "ANY" / "RATIO"로 바꿔 써라.
+        ingredient_query = self._ingredient_filter(user_ingredients, mode="ALL", ratio=0.6)
+        if ingredient_query:
+            body["query"] = ingredient_query
+
+        # 2) RRF 하이브리드(쿼리가 있을 때만)
         if query:
-            # --- ✅ 개선: 3채널 하이브리드 검색을 위한 RRF 쿼리 ---
-            es_body["rank"] = {
-                "rrf": [
-                    # 채널 1: 키워드 검색 (정확성 담당)
+            retrievers: List[Dict[str, Any]] = [
+                # 표준 BM25 채널 (dish_name 우선, boost 2.0)
+                {"standard": {"query": {"match": {"dish_name": {"query": query, "boost": 2.0}}}}}
+            ]
+
+            # 쿼리 임베딩이 있을 때만 kNN 채널 추가
+            if query_vector is not None:
+                retrievers.extend([
                     {
-                        "query": { "match": { "dish_name": { "query": query, "boost": 2.0 }}},
-                        "window_size": 50
+                        "knn": {
+                            "field": "core_identity_embedding",
+                            "query_vector": query_vector,
+                            "k": 10,
+                            "num_candidates": 50
+                        }
                     },
-                    # 채널 2: 핵심 정체성 벡터 검색 (요리명+재료)
                     {
-                        "query": { "knn": { "field": "core_identity_embedding", "query_vector": query_vector, "k": 10, "num_candidates": 50 }},
-                        "window_size": 50, "rank_constant": 20
+                        "knn": {
+                            "field": "context_embedding",
+                            "query_vector": query_vector,
+                            "k": 10,
+                            "num_candidates": 50
+                        }
                     },
-                    # 채널 3: 맥락/설명 벡터 검색 (자연어)
-                    {
-                        "query": { "knn": { "field": "context_embedding", "query_vector": query_vector, "k": 10, "num_candidates": 50 }},
-                        "window_size": 50, "rank_constant": 20
-                    }
-                ]
+                ])
+
+            body["retriever"] = {
+                "rrf": {
+                    "retrievers": retrievers,
+                    "rank_window_size": 50,
+                    "rank_constant": 20
+                }
             }
-            # 재료 필터는 bool 쿼리로 RRF와 결합
-            if filter_clauses:
-                es_body["query"] = {"bool": {"filter": filter_clauses}}
 
-        else: # 키워드 검색 없이 재료 필터만 있는 경우
-            es_body["query"] = {"bool": {"filter": filter_clauses}}
+        # 3) 검색 실행
+        resp = await self.es_client.search(index=DISHES_INDEX_NAME, body=body)
 
-
-        # 3. Elasticsearch에 검색 실행
-        response = await self.es_client.search(
-            index=DISHES_INDEX_NAME,
-            body=es_body
-        )
-
-        # 4. 결과 파싱 및 반환
-        hits = response["hits"]["hits"]
-        total = response["hits"]["total"]["value"]
-        results = [{"score": hit["_score"], **hit["_source"]} for hit in hits]
-
+        # 4) 결과 파싱
+        hits = resp.get("hits", {}).get("hits", [])
+        total = resp.get("hits", {}).get("total", {}).get("value", 0)
+        results = [{"score": h.get("_score"), **(h.get("_source") or {})} for h in hits]
         return {"total": total, "results": results}
 
     async def bulk_index_dishes(self, documents: List[Dict[str, Any]]):
-        """여러 요리 문서를 Elasticsearch에 대량으로 색인합니다."""
+        """
+        여러 요리 문서를 대량 색인.
+        documents 예시:
+          {"_index": DISHES_INDEX_NAME, "_id": "dish_recipe", "_source": {...}} 형태 권장
+        """
         if await self.es_client.indices.exists(index=DISHES_INDEX_NAME):
             await self.es_client.delete_by_query(
                 index=DISHES_INDEX_NAME, query={"match_all": {}}, refresh=True
             )
-            print(f"Deleted all documents in index '{DISHES_INDEX_NAME}'.")
+            logger.info("Deleted all documents in index '%s'.", DISHES_INDEX_NAME)
 
         success, failed = await async_bulk(self.es_client, documents, refresh=True)
+
         if failed:
-            print(f"Failed to index {len(failed)} documents.")
+            logger.error("Failed to index %d documents.", len(failed))
         else:
-            print(f"Successfully indexed {success} documents.")
+            logger.info("Successfully indexed %s documents.", success)
+
         return {"success": success, "failed": len(failed)}

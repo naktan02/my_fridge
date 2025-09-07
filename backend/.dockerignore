@@ -1,38 +1,76 @@
+# ──────────────────────────────
 # Git & VCS
 .git
 .gitmodules
 .gitignore
 
+# ──────────────────────────────
 # Python & caches
 __pycache__/
 *.py[cod]
 *.egg-info/
-.dist-info/
+*.dist-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .tox/
+__pypackages__/
 
-# IDE/OS
+# ──────────────────────────────
+# IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
+# ──────────────────────────────
 # Local env & artifacts
 .venv/
 venv/
 .env
-.env.*
-!.env.example
+.env.*        # 모든 환경파일 무시
+!.env.example # 예시용 env만 남김
 *.db
 *.sqlite
 *.sqlite3
 build/
 dist/
 
+# ──────────────────────────────
+# Logs & temp
+*.log
+*.out
+*.tmp
+*.bak
+*.swp
+
+# ──────────────────────────────
 # Node (혹시 있을 경우)
 node_modules/
 
+# ──────────────────────────────
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# ──────────────────────────────
 # Docker runtime data
 docker-data/
+
+# ──────────────────────────────
+# 데이터셋 & 모델 (빌드에 필요 없는 큰 파일들)
+data/
+datasets/
+*.tiff
+*.tif
+*.mat
+*.h5
+*.pth
+*.pt
+*.npz
+*.npy
+
+# ──────────────────────────────
+# Docker / Compose (컨테이너에 복사할 필요 없음)
+Dockerfile
+docker-compose*.yml
