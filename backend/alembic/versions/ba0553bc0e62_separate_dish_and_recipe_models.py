@@ -31,45 +31,6 @@ def upgrade() -> None:
 
     op.add_column('user_ingredients', sa.Column('user_id', sa.Integer(), nullable=False))
     op.create_foreign_key('fk_user_ingredients_user_id', 'user_ingredients', 'users', ['user_id'], ['id'])
-
-    # ### 신규 테이블 생성 (누락된 부분) ###
-    op.create_table('dishes',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('cuisine_type', sa.String(), nullable=True),
-        sa.Column('tags', sa.ARRAY(sa.String()), nullable=True),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('name')
-    )
-    op.create_index(op.f('ix_dishes_id'), 'dishes', ['id'], unique=False)
-
-    op.create_table('recipes',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('dish_id', sa.Integer(), nullable=False),
-        sa.Column('author', sa.String(), nullable=True),
-        sa.Column('difficulty', sa.Integer(), nullable=True),
-        sa.Column('serving_size', sa.String(), nullable=True),
-        sa.Column('cooking_time', sa.Integer(), nullable=True),
-        sa.Column('instructions', sa.Text(), nullable=False),
-        sa.Column('youtube_url', sa.String(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['dish_id'], ['dishes.id'], ),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_recipes_id'), 'recipes', ['id'], unique=False)
-
-    op.create_table('recipe_ingredients',
-        sa.Column('recipe_id', sa.Integer(), nullable=False),
-        sa.Column('ingredient_id', sa.Integer(), nullable=False),
-        sa.Column('quantity_display', sa.String(), nullable=True),
-        sa.ForeignKeyConstraint(['ingredient_id'], ['ingredients.id'], ),
-        sa.ForeignKeyConstraint(['recipe_id'], ['recipes.id'], ),
-        sa.PrimaryKeyConstraint('recipe_id', 'ingredient_id')
-    )
     
     # ### 불필요해진 예전 테이블 삭제 ###
     op.drop_table('dish_types')
