@@ -31,42 +31,57 @@ async def create_dishes_index(es: AsyncElasticsearch):
     settings = {
         "analysis": {
             "analyzer": {
+                # 1) 색인 분석기: 동의어 없음 (가볍게)
                 "ko_index_analyzer": {
                     "type": "custom",
                     "tokenizer": "my_nori_tokenizer",
-                    "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_index"]
+                    "filter": ["my_pos_filter", "lowercase_filter"]
                 },
+                # 2) 검색 분석기: 동의어 synonym_graph 사용
                 "ko_search_analyzer": {
                     "type": "custom",
                     "tokenizer": "my_nori_tokenizer",
                     "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_query"]
+                },
+                # 3) ★ 동의어 '파싱 전용' 분석기 (겹친 토큰 금지)
+                "synonym_parse_ko": {
+                    "type": "custom",
+                    "tokenizer": "nori_syn",     # decompound_mode=none
+                    "filter": ["lowercase"]
                 }
             },
             "tokenizer": {
+                # 실제 문서/쿼리 분석용 nori (혼성 분해)
                 "my_nori_tokenizer": {
                     "type": "nori_tokenizer",
                     "decompound_mode": "mixed",
-                    "discard_punctuation": "true",
-                    "user_dictionary": "es/userdict_ko.txt",
+                    "discard_punctuation": True,       # <- bool로!
+                    "user_dictionary": "userdict_ko.txt",
+                    "lenient": True
+                },
+                # ★ 동의어 파싱용 nori (분해 금지)
+                "nori_syn": {
+                    "type": "nori_tokenizer",
+                    "decompound_mode": "none",         # <- 이게 핵심
+                    "discard_punctuation": True,
+                    "user_dictionary": "userdict_ko.txt",
                     "lenient": True
                 }
             },
             "filter": {
                 "my_pos_filter": {"type": "nori_part_of_speech", "stoptags": ["J"]},
                 "lowercase_filter": {"type": "lowercase"},
-                "synonym_filter_index": {
-                    "type": "synonym",
-                    "synonyms_path": "es/synonym-set.txt",
-                    "lenient": False
-                },
+                # (선택) 안 쓸 거면 지워도 됨
+                # "synonym_filter_index": { ... },
                 "synonym_filter_query": {
                     "type": "synonym_graph",
-                    "synonyms_path": "es/synonym-set.txt",
+                    "synonyms_path": "synonym-set.txt",   # <- 경로 주의
+                    "analyzer": "synonym_parse_ko",          # <- ★ 여기 추가
+                    "updateable": True,
                     "lenient": False
                 }
             },
             "similarity": {
-                # 긴 설명 필드의 길이 보정 완화
                 "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
             }
         }
