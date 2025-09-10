@@ -5,13 +5,12 @@ import os, asyncio, logging
 logger = logging.getLogger(__name__)
 es_client: AsyncElasticsearch | None = None
 
-DISHES_INDEX_NAME = "dishes"
+DISHES_INDEX_NAME = "dishes"  # 운영 시엔 별칭/버전 인덱스 전략 권장
 
 async def _wait_for_es(es, retries=6, base=0.25, max_delay=2.0):
     last = None
     for i in range(retries):
         try:
-            # cluster health로 명확히 대기하되, 짧은 timeout 사용
             await es.cluster.health(wait_for_status="yellow", timeout="5s")
             return
         except Exception as e:
@@ -21,23 +20,95 @@ async def _wait_for_es(es, retries=6, base=0.25, max_delay=2.0):
     raise RuntimeError(f"ES not reachable: {last}")
 
 async def create_dishes_index(es: AsyncElasticsearch):
+    """
+    nori + 사용자사전/동의어를 쓰는 '텍스트 전용' 인덱스 생성.
+    - dict/userdict_ko.txt, dict/synonym-set.txt 는 ES 컨테이너 내부 경로여야 함(볼륨 마운트 필수).
+    """
     exists = await es.indices.exists(index=DISHES_INDEX_NAME)
     if exists:
         return
-    # nori 사용 시 플러그인 필요(아래 참고)
-    mappings = {
-        "properties": {
-            "dish_name":     {"type": "text", "analyzer": "nori"},
-            "recipe_title":  {"type": "text", "analyzer": "nori"},
-            "ingredients":   {"type": "keyword"},
-            "core_identity_embedding": {"type": "dense_vector", "dims": 1024, "index": True, "similarity": "cosine"},
-            "context_embedding":       {"type": "dense_vector", "dims": 1024, "index": True, "similarity": "cosine"},
-            "dish_id":       {"type": "integer"},
-            "recipe_id":     {"type": "integer"},
-            "thumbnail_url": {"type": "keyword", "index": False}
+
+    settings = {
+        "analysis": {
+            "analyzer": {
+                "ko_index_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "my_nori_tokenizer",
+                    "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_index"]
+                },
+                "ko_search_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "my_nori_tokenizer",
+                    "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_query"]
+                }
+            },
+            "tokenizer": {
+                "my_nori_tokenizer": {
+                    "type": "nori_tokenizer",
+                    "decompound_mode": "mixed",
+                    "discard_punctuation": "true",
+                    "user_dictionary": "es/userdict_ko.txt",
+                    "lenient": True
+                }
+            },
+            "filter": {
+                "my_pos_filter": {"type": "nori_part_of_speech", "stoptags": ["J"]},
+                "lowercase_filter": {"type": "lowercase"},
+                "synonym_filter_index": {
+                    "type": "synonym",
+                    "synonyms_path": "es/synonym-set.txt",
+                    "lenient": False
+                },
+                "synonym_filter_query": {
+                    "type": "synonym_graph",
+                    "synonyms_path": "es/synonym-set.txt",
+                    "lenient": False
+                }
+            },
+            "similarity": {
+                # 긴 설명 필드의 길이 보정 완화
+                "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
+            }
         }
     }
-    await es.indices.create(index=DISHES_INDEX_NAME, mappings=mappings)
+
+    mappings = {
+        "properties": {
+            "dish_id":   {"type": "integer"},
+            "recipe_id": {"type": "integer"},
+            "dish_name": {
+                "type": "text",
+                "analyzer": "ko_index_analyzer",
+                "search_analyzer": "ko_search_analyzer",
+                "fields": {"raw": {"type": "keyword"}}
+            },
+            "recipe_title": {
+                "type": "text",
+                "analyzer": "ko_index_analyzer",
+                "search_analyzer": "ko_search_analyzer",
+                "fields": {"raw": {"type": "keyword"}}
+            },
+            "ingredients": {
+                "type": "keyword",  # 필터/집계/정확일치
+                "fields": {
+                    "tok": {
+                        "type": "text",
+                        "analyzer": "ko_index_analyzer",
+                        "search_analyzer": "ko_search_analyzer"
+                    }
+                }
+            },
+            "description": {
+                "type": "text",
+                "analyzer": "ko_index_analyzer",
+                "search_analyzer": "ko_search_analyzer",
+                "similarity": "bm25_desc"
+            }
+        }
+    }
+
+    await es.indices.create(index=DISHES_INDEX_NAME, settings=settings, mappings=mappings)
+    logger.info("Created index '%s' with nori analyzers.", DISHES_INDEX_NAME)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -45,7 +116,7 @@ async def lifespan(app):
     es_url = os.getenv("ELASTICSEARCH_URL", "http://my_fridge_es:9200")
     es_client = AsyncElasticsearch(es_url, request_timeout=10)
     try:
-        await _wait_for_es(es_client)          # 재시도 포함
+        await _wait_for_es(es_client)
         print("Elasticsearch client connected.")
         await create_dishes_index(es_client)
         yield
