@@ -31,52 +31,42 @@ async def create_dishes_index(es: AsyncElasticsearch):
     settings = {
         "analysis": {
             "analyzer": {
-                # 1) 색인 분석기: 동의어 없음 (가볍게)
+                # 1) 색인 분석기: 동의어 없이 가볍게
                 "ko_index_analyzer": {
                     "type": "custom",
                     "tokenizer": "my_nori_tokenizer",
                     "filter": ["my_pos_filter", "lowercase_filter"]
                 },
-                # 2) 검색 분석기: 동의어 synonym_graph 사용
+                # 2) 검색 분석기: synonym_graph 적용
                 "ko_search_analyzer": {
                     "type": "custom",
                     "tokenizer": "my_nori_tokenizer",
                     "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_query"]
                 },
-                # 3) ★ 동의어 '파싱 전용' 분석기 (겹친 토큰 금지)
-                "synonym_parse_ko": {
+                # 3) ★ 동의어 '파싱 전용' 분석기: standard + lowercase (겹친 토큰 금지)
+                "synonym_parse_std": {
                     "type": "custom",
-                    "tokenizer": "nori_syn",     # decompound_mode=none
+                    "tokenizer": "standard",
                     "filter": ["lowercase"]
                 }
             },
             "tokenizer": {
-                # 실제 문서/쿼리 분석용 nori (혼성 분해)
                 "my_nori_tokenizer": {
                     "type": "nori_tokenizer",
                     "decompound_mode": "mixed",
-                    "discard_punctuation": True,       # <- bool로!
-                    "user_dictionary": "userdict_ko.txt",
-                    "lenient": True
-                },
-                # ★ 동의어 파싱용 nori (분해 금지)
-                "nori_syn": {
-                    "type": "nori_tokenizer",
-                    "decompound_mode": "none",         # <- 이게 핵심
-                    "discard_punctuation": True,
-                    "user_dictionary": "userdict_ko.txt",
+                    "discard_punctuation": True,      # 문자열 "true" 말고 bool
+                    "user_dictionary": "userdict_ko.txt",  # ← 현재 컨테이너 경로에 맞춤
                     "lenient": True
                 }
             },
             "filter": {
-                "my_pos_filter": {"type": "nori_part_of_speech", "stoptags": ["J"]},
+                "my_pos_filter": {"type": "nori_part_of_speech", "stoptags": ["E","J","IC"]},
                 "lowercase_filter": {"type": "lowercase"},
-                # (선택) 안 쓸 거면 지워도 됨
-                # "synonym_filter_index": { ... },
+                # 색인용 동의어 필터는 아예 제거(혼란 방지)
                 "synonym_filter_query": {
                     "type": "synonym_graph",
-                    "synonyms_path": "synonym-set.txt",   # <- 경로 주의
-                    "analyzer": "synonym_parse_ko",          # <- ★ 여기 추가
+                    "synonyms_path": "synonym-set.txt",    # ← 현재 컨테이너 경로에 맞춤
+                    "analyzer": "synonym_parse_std",       # ← ★ 이 줄이 없으면 또 터짐
                     "updateable": True,
                     "lenient": False
                 }

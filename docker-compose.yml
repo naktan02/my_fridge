@@ -53,9 +53,13 @@ services:
     build: ./backend/es
     container_name: my_fridge_es
     environment:
+      - ELASTIC_USERNAME=${ELASTIC_USERNAME}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.transport.ssl.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.enabled=true
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
     ports: ["9200:9200"]         # ← 단일 노드면 9300 불필요. 깎자.
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data

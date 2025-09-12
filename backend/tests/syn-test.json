@@ -1,0 +1,52 @@
+{
+  "settings": {
+    "analysis": {
+      "tokenizer": {
+        "nori_tok": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed",
+          "discard_punctuation": true,
+          "user_dictionary": "userdict_ko.txt",
+          "lenient": true
+        },
+        "nori_tok_none": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "none",
+          "discard_punctuation": true
+        }
+      },
+      "filter": {
+        "ko_pos": { "type": "nori_part_of_speech", "stoptags": ["J"] },
+        "syn_q": {
+          "type": "synonym_graph",
+          "tokenizer": "nori_tok_none",           
+          "synonyms_path": "synonym-set.txt",
+          "updateable": true,
+          "lenient": false
+        }
+      },
+      "analyzer": {
+        "ko_index_analyzer": {
+          "type": "custom",
+          "tokenizer": "nori_tok",
+          "filter": ["ko_pos", "lowercase"]
+        },
+        "ko_search_analyzer": {
+          "type": "custom",
+          "tokenizer": "nori_tok",
+          "filter": ["ko_pos", "lowercase", "syn_q"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "dish_name":        { "type": "text", "analyzer": "ko_index_analyzer", "search_analyzer": "ko_search_analyzer" },
+      " ":     { "type": "text", "analyzer": "ko_index_analyzer", "search_analyzer": "ko_search_analyzer" },
+      "texts_for_context":{ "type": "text", "analyzer": "ko_index_analyzer", "search_analyzer": "ko_search_analyzer" },
+      "ingredients":      { "type": "text", "analyzer": "ko_index_analyzer", "search_analyzer": "ko_search_analyzer" },
+      "dish_id":          { "type": "long" },
+      "recipe_id":        { "type": "long" }
+    }
+  }
+}
