@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import os, asyncio, logging
 
 logger = logging.getLogger(__name__)
-es_client: AsyncElasticsearch | None = None
+es_client = None
 
 DISHES_INDEX_NAME = "dishes"  # 운영 시엔 별칭/버전 인덱스 전략 권장
 
@@ -43,10 +43,10 @@ async def create_dishes_index(es: AsyncElasticsearch):
                     "tokenizer": "my_nori_tokenizer",
                     "filter": ["my_pos_filter", "lowercase_filter", "synonym_filter_query"]
                 },
-                # 3) ★ 동의어 '파싱 전용' 분석기: standard + lowercase (겹친 토큰 금지)
+                # 3) 동의어 '파싱 전용' 분석기: whitespace + lowercase (겹침 토큰 방지)
                 "synonym_parse_std": {
                     "type": "custom",
-                    "tokenizer": "standard",
+                    "tokenizer": "whitespace",
                     "filter": ["lowercase"]
                 }
             },
@@ -54,21 +54,20 @@ async def create_dishes_index(es: AsyncElasticsearch):
                 "my_nori_tokenizer": {
                     "type": "nori_tokenizer",
                     "decompound_mode": "mixed",
-                    "discard_punctuation": True,      # 문자열 "true" 말고 bool
-                    "user_dictionary": "userdict_ko.txt",  # ← 현재 컨테이너 경로에 맞춤
-                    "lenient": True
+                    "discard_punctuation": True,
+                    "user_dictionary": "dict/userdict_ko.txt"  # 컨테이너 경로 기준
                 }
             },
             "filter": {
                 "my_pos_filter": {"type": "nori_part_of_speech", "stoptags": ["E","J","IC"]},
                 "lowercase_filter": {"type": "lowercase"},
-                # 색인용 동의어 필터는 아예 제거(혼란 방지)
+                # 검색용 동의어 필터 (파일 기반 + 업데이트 가능)
                 "synonym_filter_query": {
                     "type": "synonym_graph",
-                    "synonyms_path": "synonym-set.txt",    # ← 현재 컨테이너 경로에 맞춤
-                    "analyzer": "synonym_parse_std",       # ← ★ 이 줄이 없으면 또 터짐
+                    "synonyms_path": "dict/synonym-set.txt",
+                    "analyzer": "synonym_parse_std",   # ← 이것이 핵심!
                     "updateable": True,
-                    "lenient": False
+                    "lenient": True
                 }
             },
             "similarity": {
@@ -94,7 +93,7 @@ async def create_dishes_index(es: AsyncElasticsearch):
                 "fields": {"raw": {"type": "keyword"}}
             },
             "ingredients": {
-                "type": "keyword",  # 필터/집계/정확일치
+                "type": "keyword",  # 집계/필터
                 "fields": {
                     "tok": {
                         "type": "text",
@@ -119,7 +118,13 @@ async def create_dishes_index(es: AsyncElasticsearch):
 async def lifespan(app):
     global es_client
     es_url = os.getenv("ELASTICSEARCH_URL", "http://my_fridge_es:9200")
-    es_client = AsyncElasticsearch(es_url, request_timeout=10)
+    es_user = os.getenv("ELASTIC_USERNAME", "elastic")
+    es_pass = os.getenv("ELASTIC_PASSWORD")
+    es_client = AsyncElasticsearch(
+        es_url,
+        basic_auth=(es_user, es_pass),
+        request_timeout=10,
+    )
     try:
         await _wait_for_es(es_client)
         print("Elasticsearch client connected.")

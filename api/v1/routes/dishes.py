@@ -136,3 +136,18 @@ async def search_grouped_dishes(
 # (참고) 프런트가 dish 카드를 클릭했을 때, res.results[*].recipe_ids[] 를
 # 그대로 다른 API(예: POST /api/v1/recipes/by-ids)에 넘기고,
 # 서버는 UNNEST WITH ORDINALITY로 순서 보존 SELECT 하여 상세를 응답하면 된다.
+
+@router.post("/recipes/by-ids", response_model=List[Recipe])
+def get_recipes_by_ids(
+    recipe_ids: List[int],
+    repo: DishRepository = Depends(get_repo),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    검색 결과에서 선택된 dish의 recipe_ids를 받아 상세 정보 반환
+    - 순서 보존을 위해 UNNEST WITH ORDINALITY 사용
+    """
+    if not recipe_ids:
+        return []
+    
+    return repo.get_recipes_by_ids_ordered(recipe_ids)

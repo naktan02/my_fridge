@@ -1,7 +1,7 @@
 services:
   api:
     build:
-      context: ./backend
+      context: .
     container_name: my_fridge_api
     command: >
       sh -c "
@@ -11,7 +11,7 @@ services:
     ports:
       - "${HOST_API_PORT:-8000}:8000"
     volumes:
-      - ./backend:/app
+      - .:/app
       - uv_venv:/app/.venv
     env_file:
       - .env
@@ -50,30 +50,29 @@ services:
 
   # ✅ elasticsearch 서비스 추가
   elasticsearch:
-    build: ./backend/es
+    build: ./elasticsearch
     container_name: my_fridge_es
     environment:
-      - ELASTIC_USERNAME=${ELASTIC_USERNAME}
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - discovery.type=single-node
-      - xpack.security.transport.ssl.enabled=false
-      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
       - ES_JAVA_OPTS=-Xms2g -Xmx2g
     ports: ["9200:9200"]         # ← 단일 노드면 9300 불필요. 깎자.
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/dict:/usr/share/elasticsearch/config/dict:ro  # 경로 수정
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile:  { soft: 65536, hard: 65536 }
     healthcheck:
       # curl/wget 없이도 동작. HTTP 200 또는 "You Know, for Search" 확인.
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200 && echo -e \"GET / HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q \"You Know, for Search\\|HTTP/1.1 200\" <&3'"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200 && printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" >&3 && head -n1 <&3 | grep -q \"HTTP/1\"'"]
+      interval: 10s
+      timeout: 10s
       retries: 30
       start_period: 30s
-      
+
 volumes:
   postgres_data:
   redis_data:
