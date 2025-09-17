@@ -1,20 +1,20 @@
 services:
   api:
     build:
-      context: ./backend
+      context: .
     container_name: my_fridge_api
     command: >
-      sh -c "uv run alembic upgrade head &&
-             uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "
+        uv run alembic upgrade head &&
+        uv run uvicorn main:app --host 0.0.0.0 --port 8000
+      "
     ports:
       - "${HOST_API_PORT:-8000}:8000"
     volumes:
-      - ./backend:/app
-      - uv_venv:/app/.venv         # .venv를 네임드 볼륨으로 분리해서 가리지 않게
+      - .:/app
+      - uv_venv:/app/.venv
     env_file:
       - .env
-    environment:
-      - PYTHONPATH=.               # 필요 없을 수도 있지만 안전빵
     depends_on:
       db:
         condition: service_healthy
@@ -22,6 +22,8 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_healthy
+    environment:
+      - ES_HOST=http://elasticsearch:9200
 
   db:
     image: pgvector/pgvector:pg16
@@ -48,23 +50,29 @@ services:
 
   # ✅ elasticsearch 서비스 추가
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    build: ./elasticsearch
     container_name: my_fridge_es
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false # 개발 환경에서만 보안 기능 비활성화
-      - ELASTIC_PLUGINS=analysis-nori # nori 형태소 분석기 설치
-    ports:
-      - "9200:9200"
-      - "9300:9300"
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+    ports: ["9200:9200"]         # ← 단일 노드면 9300 불필요. 깎자.
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/dict:/usr/share/elasticsearch/config/dict:ro  # 경로 수정
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      # curl/wget 없이도 동작. HTTP 200 또는 "You Know, for Search" 확인.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200 && printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" >&3 && head -n1 <&3 | grep -q \"HTTP/1\"'"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
 volumes:
   postgres_data:
   redis_data:

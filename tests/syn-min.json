@@ -1,0 +1,31 @@
+{
+  "settings": {
+    "analysis": {
+      "filter": {
+        "syn_q": {
+          "type": "synonym_graph",
+          "tokenizer": "standard",
+          "synonyms": [
+            "비빔밥, 비빔 밥"
+          ]
+        }
+      },
+      "analyzer": {
+        "ko_search_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "syn_q"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "title": {
+        "type": "text",
+        "analyzer": "standard",
+        "search_analyzer": "ko_search_analyzer"
+      }
+    }
+  }
+}

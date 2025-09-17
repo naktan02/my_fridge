@@ -6,13 +6,11 @@ from contextlib import asynccontextmanager
 # --- 모듈 import ---
 from api.v1.routes import dishes, ingredients, users
 from search_client import es_client, lifespan as es_lifespan
-from ml import load_embedding_model
+# from ml import load_embedding_model
 
 # --- FastAPI 앱 생명주기 관리 ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # AI 모델 로드
-    load_embedding_model()
     
     # Elasticsearch 클라이언트 생명주기 관리
     async with es_lifespan(app) as _:
