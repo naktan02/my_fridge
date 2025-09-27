@@ -21,72 +21,7 @@ def get_repo(db: Session = Depends(get_db)) -> DishRepository:
 def get_search_repo(es: AsyncElasticsearch = Depends(get_es_client)) -> SearchRepository:
     return SearchRepository(es_client=es)
 
-# === 관리자용: 전체 재색인 ===
-@router.post("/admin/search/reindex", status_code=202)
-async def reindex_dishes_for_search(
-    background_tasks: BackgroundTasks,
-    dish_repo: DishRepository = Depends(get_repo),
-    search_repo: SearchRepository = Depends(get_search_repo),
-    admin_user: models.User = Depends(is_admin)
-):
-    """
-    PostgreSQL의 모든 dish/recipe를 ES에 '텍스트 전용' 문서로 재색인.
-    - 임베딩/썸네일 제거
-    - description 포함
-    - 문서 1개 = (dish_id, recipe_id) 조합
-    """
-    async def background_reindexing():
-        print("Starting background reindexing...")
-        BATCH_SIZE = 200
-        offset = 0
-        total = 0
-        # 최초 1회 전체 삭제(운영 전환 시엔 버전 인덱스+별칭 스왑 권장)
-        await search_repo.reset_index()
 
-        while True:
-            dishes_batch = dish_repo.get_all_dishes(skip=offset, limit=BATCH_SIZE)
-            if not dishes_batch:
-                break
-
-            actions = []
-            for dish in dishes_batch:
-                for recipe in dish.recipes:
-                    ingredient_names = [item.ingredient.name for item in recipe.ingredients]
-                    
-                    # 👇 [수정] description 생성 로직 변경
-                    # instructions가 JSON(리스트)이므로 텍스트로 변환하여 색인합니다.
-                    instructions_text = ' '.join(recipe.instructions) if isinstance(recipe.instructions, list) else str(recipe.instructions)
-                    description = instructions_text or getattr(dish, "semantic_description", "")
-
-                    actions.append({
-                        "_index": DISHES_INDEX_NAME,
-                        "_id": f"{dish.id}_{recipe.id}",
-                        "_source": {
-                            "dish_id": dish.id,
-                            "recipe_id": recipe.id,
-                            "dish_name": dish.name,
-                            "recipe_title": getattr(recipe, "title", "") or "",
-                            "recipe_name": getattr(recipe, "name", "") or "", # ✅ [추가] recipe.name 필드 추가
-                            "ingredients": ingredient_names,
-                            "description": description # ✅ [수정] 실제 레시피 설명이 포함되도록 변경
-                        }
-                    })
-
-            if actions:
-                await search_repo.bulk_index_dishes(actions, refresh=False)
-                total += len(actions)
-                print(f"Indexed batch: {len(actions)} (total {total})")
-
-            offset += BATCH_SIZE
-            await asyncio.sleep(0.2)
-
-        # 마지막에 수동 refresh
-        es = get_es_client()
-        await es.indices.refresh(index=DISHES_INDEX_NAME)
-        print(f"Background reindexing finished. Total {total} documents.")
-
-    background_tasks.add_task(background_reindexing)
-    return {"message": "재색인 작업이 백그라운드에서 시작되었습니다."}
 
 # === CRUD 예시들 (필요 시 유지) ===
 @router.post("", response_model=Dish, status_code=201)

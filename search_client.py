@@ -133,7 +133,7 @@ async def lifespan(app):
     try:
         await _wait_for_es(es_client)
         print("Elasticsearch client connected.")
-        await create_dishes_index(es_client)
+        # await create_dishes_index(es_client)
         yield
     finally:
         if es_client:
