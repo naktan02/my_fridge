@@ -55,7 +55,8 @@ class Recipe(Base):
     __tablename__ = "recipes"
     id = Column(Integer, primary_key=True, index=True)
     dish_id = Column(Integer, ForeignKey("dishes.id"), nullable=False)
-    title = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    title = Column(String, nullable=False)
     difficulty = Column(Integer)
     serving_size = Column(String)
     cooking_time = Column(Integer) # 분 단위
