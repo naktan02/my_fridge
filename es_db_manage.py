@@ -1,4 +1,4 @@
-# manage.py (최종 완성본)
+# manage.py (최종 수정본)
 import sys
 import os
 import json
@@ -6,6 +6,7 @@ import csv
 import asyncio
 from abc import ABC, abstractmethod
 from sqlalchemy.orm import Session
+from elasticsearch import AsyncElasticsearch 
 
 # --- 프로젝트 모듈 임포트 ---
 # 이 스크립트가 프로젝트 루트에 있으므로, 바로 임포트 가능합니다.
