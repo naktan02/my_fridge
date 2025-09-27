@@ -5,7 +5,7 @@ from sqlalchemy import (
     func
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY,JSONB
 from database import Base
 
 # --- 중간 테이블 (M:N 관계) ---
@@ -59,7 +59,7 @@ class Recipe(Base):
     difficulty = Column(Integer)
     serving_size = Column(String)
     cooking_time = Column(Integer) # 분 단위
-    instructions = Column(Text, nullable=False)
+    instructions = Column(JSONB, nullable=False)
     youtube_url = Column(String, nullable=True)
     thumbnail_url = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
