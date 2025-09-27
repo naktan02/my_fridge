@@ -92,6 +92,11 @@ async def create_dishes_index(es: AsyncElasticsearch):
                 "search_analyzer": "ko_search_analyzer",
                 "fields": {"raw": {"type": "keyword"}}
             },
+            "recipe_name": {
+                "type": "text",
+                "analyzer": "ko_index_analyzer",
+                "search_analyzer": "ko_search_analyzer"
+            },
             "ingredients": {
                 "type": "keyword",  # 집계/필터
                 "fields": {

@@ -7,7 +7,7 @@ from schemas.dish import Dish, DishCreate, Recipe, RecipeCreate
 from repositories.dishes import DishRepository
 from database import get_db
 from auth.dependencies import get_current_user, is_admin
-
+import json
 # 검색 관련
 from search_client import get_es_client, DISHES_INDEX_NAME
 from repositories.search import SearchRepository
@@ -52,11 +52,12 @@ async def reindex_dishes_for_search(
             for dish in dishes_batch:
                 for recipe in dish.recipes:
                     ingredient_names = [item.ingredient.name for item in recipe.ingredients]
-                    description = (
-                        getattr(recipe, "description", None)
-                        or getattr(dish, "semantic_description", None)
-                        or ""
-                    )
+                    
+                    # 👇 [수정] description 생성 로직 변경
+                    # instructions가 JSON(리스트)이므로 텍스트로 변환하여 색인합니다.
+                    instructions_text = ' '.join(recipe.instructions) if isinstance(recipe.instructions, list) else str(recipe.instructions)
+                    description = instructions_text or getattr(dish, "semantic_description", "")
+
                     actions.append({
                         "_index": DISHES_INDEX_NAME,
                         "_id": f"{dish.id}_{recipe.id}",
@@ -65,8 +66,9 @@ async def reindex_dishes_for_search(
                             "recipe_id": recipe.id,
                             "dish_name": dish.name,
                             "recipe_title": getattr(recipe, "title", "") or "",
+                            "recipe_name": getattr(recipe, "name", "") or "", # ✅ [추가] recipe.name 필드 추가
                             "ingredients": ingredient_names,
-                            "description": description
+                            "description": description # ✅ [수정] 실제 레시피 설명이 포함되도록 변경
                         }
                     })
 

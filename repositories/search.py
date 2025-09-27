@@ -88,6 +88,7 @@ class SearchRepository:
                             "fields": [
                                 "dish_name^4",
                                 "recipe_title^2.5",
+                                "recipe_name^2.5",
                                 "ingredients.tok^2",
                                 "description^1.6"
                             ],
