@@ -69,10 +69,10 @@ async def create_dishes_index(es: AsyncElasticsearch):
                     "updateable": True,
                     "lenient": True
                 }
-            },
-            "similarity": {
-                "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
             }
+        },
+        "similarity": {
+            "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
         }
     }
 
