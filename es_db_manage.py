@@ -6,10 +6,10 @@ import csv
 import asyncio
 from abc import ABC, abstractmethod
 from sqlalchemy.orm import Session
-from elasticsearch import AsyncElasticsearch 
+from sqlalchemy import text
+from elasticsearch import AsyncElasticsearch
 
 # --- 프로젝트 모듈 임포트 ---
-# 이 스크립트가 프로젝트 루트에 있으므로, 바로 임포트 가능합니다.
 from database import SessionLocal
 import models
 from repositories.dishes import DishRepository
@@ -19,7 +19,7 @@ from search_client import create_dishes_index, DISHES_INDEX_NAME, get_es_client,
 # --------------------------------------------------------------------------
 # ⚙️ 설정 (Configuration)
 # --------------------------------------------------------------------------
-BASE_DATA_PATH = "/data" 
+BASE_DATA_PATH = "/data"
 RECIPE_DIR_PATH = os.path.join(BASE_DATA_PATH, "레시피 모음")
 DESCRIPTION_DIR_PATH = os.path.join(BASE_DATA_PATH, "요리 설명")
 INGREDIENTS_FILE_PATH = os.path.join(BASE_DATA_PATH, "재료/ingredients.json")
@@ -51,14 +51,17 @@ class DBManager(BaseManager):
     """데이터베이스 데이터 리셋 및 임포트를 담당합니다."""
 
     async def _reset_data(self):
-        print("--- 모든 데이터 삭제를 시작합니다 (User 정보는 유지) ---")
-        self.db.query(models.RecipeIngredient).delete(synchronize_session=False)
-        self.db.query(models.UserIngredient).delete(synchronize_session=False)
-        self.db.query(models.Recipe).delete(synchronize_session=False)
-        self.db.query(models.Dish).delete(synchronize_session=False)
-        self.db.query(models.Ingredient).delete(synchronize_session=False)
-        self.db.commit()
-        print("✅ 모든 데이터가 성공적으로 삭제되었습니다.")
+        print("--- 모든 데이터 삭제 및 ID 시퀀스 초기화를 시작합니다 (User 정보는 유지) ---")
+        try:
+            self.db.execute(text("""
+                TRUNCATE TABLE recipe_ingredients, user_ingredients, recipes, dishes, ingredients
+                RESTART IDENTITY CASCADE;
+            """))
+            self.db.commit()
+            print("✅ 모든 데이터가 성공적으로 삭제되었고, ID 시퀀스가 초기화되었습니다.")
+        except Exception as e:
+            print(f"❌ 데이터 리셋 중 오류 발생: {e}")
+            self.db.rollback()
 
     async def _import_dishes(self):
         print("--- '요리 설명' 데이터 임포트를 시작합니다 ---")
@@ -69,21 +72,17 @@ class DBManager(BaseManager):
                     with open(os.path.join(DESCRIPTION_DIR_PATH, filename), "r", encoding="utf-8") as f:
                         descriptions.update(json.load(f))
         except FileNotFoundError:
-            print(f"❌ '요리 설명' 폴더를 찾을 수 없습니다: {DESCRIPTION_DIR_PATH}")
+            print(f"⚠️ '요리 설명' 폴더를 찾을 수 없습니다: {DESCRIPTION_DIR_PATH}")
             return
             
-        new_count, update_count = 0, 0
+        new_count = 0
         for dish_name, description in descriptions.items():
             db_dish = self.db.query(models.Dish).filter(models.Dish.name == dish_name).first()
-            if db_dish:
-                if not db_dish.semantic_description and description:
-                    db_dish.semantic_description = description
-                    update_count += 1
-            else:
+            if not db_dish:
                 self.db.add(models.Dish(name=dish_name, semantic_description=description))
                 new_count += 1
         self.db.commit()
-        print(f"✅ {new_count}개의 새로운 Dish를 추가하고, {update_count}개의 Dish 설명을 업데이트했습니다.")
+        print(f"✅ {new_count}개의 새로운 Dish를 추가했습니다.")
 
     async def _import_ingredients(self):
         print("--- '마스터 재료' 데이터 임포트를 시작합니다 ---")
@@ -110,75 +109,128 @@ class DBManager(BaseManager):
         print("--- '레시피' 데이터 임포트를 시작합니다 ---")
         
         def _get_or_create_ingredient(name: str) -> models.Ingredient:
-            # ... (기존 로직과 동일)
-            ingredient = self.db.query(models.Ingredient).filter(models.Ingredient.name == name).first()
+            clean_name = name.strip()
+            if not clean_name: return None
+            
+            ingredient = self.db.query(models.Ingredient).filter(models.Ingredient.name == clean_name).first()
             if ingredient: return ingredient
-            new_ingredient = models.Ingredient(name=name)
+            
+            new_ingredient = models.Ingredient(name=clean_name)
             self.db.add(new_ingredient)
-            self.db.flush(); return new_ingredient
+            self.db.flush()
+            return new_ingredient
             
         def _get_or_create_dish(name: str) -> models.Dish:
-            # ... (기존 로직과 동일)
-            dish = self.db.query(models.Dish).filter(models.Dish.name == name).first()
-            if dish: return dish
-            new_dish = models.Dish(name=name, semantic_description=None)
+            if not name or not name.strip():
+                return None
+
+            clean_name = name.strip()
+            dish = self.db.query(models.Dish).filter(models.Dish.name == clean_name).first()
+            if dish:
+                return dish
+            
+            print(f"  - ✨ Dish '{clean_name}'이(가) 없어 새로 추가합니다.")
+            new_dish = models.Dish(name=clean_name, semantic_description=None)
             self.db.add(new_dish)
-            self.db.flush(); return new_dish
+            self.db.flush()
+            return new_dish
 
         try:
             recipe_files = os.listdir(RECIPE_DIR_PATH)
         except FileNotFoundError:
-            print(f"❌ '레시피 모음' 폴더를 찾을 수 없습니다: {RECIPE_DIR_PATH}"); return
+            print(f"❌ '레시피 모음' 폴더를 찾을 수 없습니다: {RECIPE_DIR_PATH}")
+            return
 
         for filename in recipe_files:
             if not filename.endswith(".csv"): continue
             print(f"\n--- '{filename}' 파일 처리 중 ---")
             with open(os.path.join(RECIPE_DIR_PATH, filename), "r", encoding="utf-8") as f:
-                for row in csv.DictReader(f):
+                reader = csv.DictReader(f)
+                for row in reader:
                     try:
-                        dish_category, recipe_name = row.get("category"), row.get("name")
-                        if not dish_category or not recipe_name: continue
-                        
-                        db_dish = _get_or_create_dish(dish_category)
+                        # ===== [수정된 부분] =====
                         recipe_data = json.loads(row["data"])
                         
+                        # 1. JSON 내부의 category를 우선적으로 사용
+                        dish_category = recipe_data.get("category")
+                        
+                        # 2. JSON 내부에 없으면, 외부 CSV 컬럼의 category를 차선책으로 사용
+                        if not dish_category or not dish_category.strip():
+                            dish_category = row.get("category")
+
+                        recipe_name = row.get("dish_name")
+
+                        if not dish_category or not dish_category.strip(): 
+                            print(f"  - ⚠️ 'category'가 없어 건너<binary data, 2 bytes>니다: {row}")
+                            continue
+                        if not recipe_name or not recipe_name.strip():
+                            print(f"  - ⚠️ 'dish_name'이 없어 건너<binary data, 2 bytes>니다: {row}")
+                            continue
+                        # ============================
+                        
+                        db_dish = _get_or_create_dish(dish_category)
+                        
+                        if not db_dish:
+                            print(f"  - ❌ Dish를 처리할 수 없어 레시피를 건너<binary data, 2 bytes>니다: {recipe_name}")
+                            continue
+
+                        difficulty_val = row.get("difficulty")
+                        difficulty = int(difficulty_val) if difficulty_val and difficulty_val.isdigit() else None
+                        
+                        cooking_time_val = row.get("cooking_time")
+                        cooking_time = int(cooking_time_val) if cooking_time_val and cooking_time_val.isdigit() else None
+                        
                         new_recipe = models.Recipe(
-                            dish_id=db_dish.id, name=recipe_name,
+                            dish_id=db_dish.id, 
+                            name=recipe_name.strip(),
                             title=recipe_data.get("title", ""),
+                            difficulty=difficulty,
+                            cooking_time=cooking_time,
                             instructions=recipe_data.get("recipe", []),
                             youtube_url=recipe_data.get("url"),
                             thumbnail_url=recipe_data.get("image_url")
                         )
-                        self.db.add(new_recipe); self.db.flush()
+                        self.db.add(new_recipe)
+                        self.db.flush()
 
+                        processed_ingredient_ids = set()
                         for ing_data in recipe_data.get("ingredients", []):
                             ing_name = ing_data.get("name")
                             if not ing_name: continue
+                            
                             ingredient = _get_or_create_ingredient(ing_name)
+                            if not ingredient: continue
+
+                            if ingredient.id in processed_ingredient_ids:
+                                continue
+
                             self.db.add(models.RecipeIngredient(
                                 recipe_id=new_recipe.id,
                                 ingredient_id=ingredient.id,
                                 quantity_display=ing_data.get("quantity")
                             ))
+                            processed_ingredient_ids.add(ingredient.id)
+                        
                         self.db.commit()
+                    except json.JSONDecodeError:
+                        print(f"  - ❌ JSON 파싱 오류: {row.get('data')}")
+                        self.db.rollback()
                     except Exception as e:
-                        print(f"  - ❌ 에러 발생: {e}"); self.db.rollback()
+                        print(f"  - ❌ 알 수 없는 에러 발생: {e}")
+                        self.db.rollback()
         print("\n🎉 모든 레시피 파일 처리가 완료되었습니다.")
-
 
     async def run(self, command: str):
         if command == "reset":
             await self._reset_data()
         elif command == "import_all":
-            await self._import_dishes()
             await self._import_ingredients()
+            await self._import_dishes()
             await self._import_recipes()
         else:
             print(f"알 수 없는 DB 관련 명령어입니다: {command}")
 
-# --------------------------------------------------------------------------
-# 🔍 엘라스틱서치 관리자 (Elasticsearch Manager)
-# --------------------------------------------------------------------------
+
 class ESManager(BaseManager):
     """Elasticsearch 인덱스 생성 및 재색인을 담당합니다."""
     def __init__(self):
@@ -192,7 +244,8 @@ class ESManager(BaseManager):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.es_lifespan_context.__aexit__(exc_type, exc_val, exc_tb)
+        if hasattr(self, 'es_lifespan_context'):
+            await self.es_lifespan_context.__aexit__(exc_type, exc_val, exc_tb)
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def _create_index(self):
@@ -217,7 +270,7 @@ class ESManager(BaseManager):
             for dish in dishes_batch:
                 for recipe in dish.recipes:
                     ingredient_names = [item.ingredient.name for item in recipe.ingredients]
-                    instructions_text = ' '.join(recipe.instructions) if isinstance(recipe.instructions, list) else str(recipe.instructions)
+                    instructions_text = ' '.join(map(str, recipe.instructions)) if isinstance(recipe.instructions, list) else str(recipe.instructions)
                     description = instructions_text or getattr(dish, "semantic_description", "")
                     
                     actions.append({
@@ -252,11 +305,8 @@ class ESManager(BaseManager):
         else:
             print(f"알 수 없는 ES 관련 명령어입니다: {command}")
 
-# --------------------------------------------------------------------------
-# 🚀 실행기 (Runner)
-# --------------------------------------------------------------------------
 def print_usage():
-    print("\n사용법: docker-compose exec api uv run python manage.py [group] [command]")
+    print("\n사용법: docker-compose exec api uv run python es_db_manage.py [group] [command]")
     print("\nGroups & Commands:")
     print("  db reset         : 요리/레시피/재료 관련 DB 데이터를 모두 삭제합니다.")
     print("  db import_all    : 모든 데이터를 DB로 가져옵니다.")
@@ -270,15 +320,23 @@ async def main():
 
     group, command = sys.argv[1], sys.argv[2]
 
-    if group == "db":
-        async with DBManager() as manager:
+    manager = None
+    try:
+        if group == "db":
+            manager = DBManager()
+            await manager.__aenter__()
             await manager.run(command)
-    elif group == "es":
-        async with ESManager() as manager:
+        elif group == "es":
+            manager = ESManager()
+            await manager.__aenter__()
             await manager.run(command)
-    else:
-        print(f"알 수 없는 명령어 그룹입니다: {group}")
-        print_usage()
+        else:
+            print(f"알 수 없는 명령어 그룹입니다: {group}")
+            print_usage()
+    finally:
+        if manager:
+            await manager.__aexit__(None, None, None)
 
 if __name__ == "__main__":
+    sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
     asyncio.run(main())
