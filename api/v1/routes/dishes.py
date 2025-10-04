@@ -48,9 +48,20 @@ def add_recipe_to_dish(
 # === 사용자용: dish 카드 목록(그룹화 + 각 dish의 상위 K 레시피 id) ===
 @router.post("/search/grouped", response_model=GroupedSearchResponse, tags=["Dishes"])
 async def search_grouped_dishes(
-    search_request: SearchRequest, # Body로 데이터를 받음
+    search_request: SearchRequest,
     search_repo: SearchRepository = Depends(get_search_repo),
+    # 이 API는 이제 로그인이 필수입니다.
+    current_user: models.User = Depends(get_current_user)
 ):
+    """
+    **통합 검색 API (로그인 필수)**
+    - Request Body로 받은 `ingredients` 목록을 사용하여 요리를 검색합니다.
+    """
+    # Body에 재료가 없으면(필수 필드이므로 그럴 일은 없지만) 빈 결과를 반환
+    if not search_request.ingredients:
+        return {"total": 0, "results": []}
+
+    # 앱이 보내준 재료 목록을 사용하여 Elasticsearch 검색 수행
     res = await search_repo.search_grouped_dishes(
         query=search_request.q,
         user_ingredients=search_request.ingredients,
