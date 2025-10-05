@@ -7,20 +7,21 @@ import schemas
 from repositories.ingredients import IngredientRepository
 from database import get_db
 from auth.dependencies import get_current_user, is_admin
+from typing import List
 
 router = APIRouter()
 
-# ✅ 수정: 최종 URL -> POST /api/v1/ingredients/me
-@router.post("/me", response_model=schemas.ingredient.UserIngredientResponse)
-def add_my_ingredient(
-    ingredient_create: schemas.ingredient.UserIngredientCreate,
+@router.post("/me", response_model=List[schemas.ingredient.UserIngredientResponse])
+def add_my_ingredients(
+    ingredients_create: schemas.ingredient.UserIngredientsCreate, # ✅ UserIngredientsCreate 스키마 사용
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """**사용자용 API** - 나의 냉장고에 재료를 추가합니다."""
+    """**사용자용 API** - 나의 냉장고에 여러 재료를 한 번에 추가합니다."""
     repo = IngredientRepository(db)
     user_id = current_user.id
-    return repo.add_ingredient_to_user(user_id=user_id, ingredient_data=ingredient_create)
+    # ✅ 여러 재료를 추가하는 리포지토리 메서드 호출
+    return repo.add_ingredients_to_user(user_id=user_id, ingredients_data=ingredients_create.ingredients)
 
 # ✅ 수정: 최종 URL -> POST /api/v1/ingredients/admin
 @router.post("/admin", response_model=schemas.ingredient.MasterIngredientResponse, status_code=201)
