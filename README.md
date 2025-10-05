@@ -153,6 +153,7 @@ API는 `http://localhost:8000`을 기본 URL로 사용합니다. 재료 추가 �
 
 ## 🗂️ 프로젝트 구조
 
+```text
 my_fridge/
 ├── alembic/              # 데이터베이스 마이그레이션 (Alembic)
 │   ├── versions/
