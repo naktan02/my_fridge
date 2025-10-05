@@ -154,28 +154,13 @@ class DishRepository:
         ).filter(models.Dish.id.in_(dish_ids)).all()
         
     def get_recipes_by_ids_ordered(self, recipe_ids: list[int]) -> list[models.Recipe]:
-        """
-        주어진 recipe_id 리스트에 대해 순서를 보존하여 레시피 상세 정보를 반환합니다.
-        """
         if not recipe_ids:
             return []
-
-        # PostgreSQL의 UNNEST와 ORDINALITY를 사용하여 순서 보장
         stmt = text("""
             SELECT r.*
             FROM unnest(:recipe_ids) WITH ORDINALITY AS u(id, ord)
             JOIN recipes AS r ON r.id = u.id
             ORDER BY u.ord
         """)
-        
-        orm_stmt = (
-            select(models.Recipe)
-            .from_statement(stmt)
-            .params(recipe_ids=recipe_ids)
-            .options(
-                joinedload(models.Recipe.ingredients)
-                .joinedload(models.RecipeIngredient.ingredient)
-            )
-        )
-        
+        orm_stmt = (select(models.Recipe).from_statement(stmt).params(recipe_ids=recipe_ids).options(joinedload(models.Recipe.ingredients).joinedload(models.RecipeIngredient.ingredient)))
         return self.db.execute(orm_stmt).scalars().all()

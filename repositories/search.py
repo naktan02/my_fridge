@@ -80,25 +80,23 @@ class SearchRepository:
 
         # 2) 텍스트 검색(있을 때만)
         if query:
+            # ===== [수정된 부분] =====
             text_q = {
-                "dis_max": {
-                    "queries": [{
-                        "multi_match": {
-                            "query": query,
-                            "fields": [
-                                "dish_name^4",
-                                "recipe_title^2.5",
-                                "recipe_name^2.5",
-                                "ingredients.tok^2",
-                                "description^1.6"
-                            ],
-                            "type": "best_fields",
-                            "tie_breaker": 0.2
-                        }
-                    }],
-                    "tie_breaker": 0.3
+                "multi_match": {
+                    "query": query,
+                    "fields": [
+                        "dish_name^4",
+                        "recipe_title^2.5",
+                        "recipe_name^2.5",
+                        "ingredients.tok^2",
+                        "description^1.6"
+                    ],
+                    "type": "best_fields",
+                    "tie_breaker": 0.2,
+                    "minimum_should_match": "75%" # 검색어의 75% 이상 일치해야 점수 부여
                 }
             }
+            # dis_max 쿼리는 여러 쿼리 중 가장 높은 점수를 선택하므로, multi_match 하나만 쓸 때는 불필요
             bool_q["must"] = [text_q]
 
         if bool_q.get("filter") or bool_q.get("must"):

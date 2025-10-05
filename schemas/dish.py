@@ -76,8 +76,8 @@ class GroupedSearchResponse(BaseModel):
 
 # 검색 요청을 위한 스키마 (Request Body)
 class SearchRequest(BaseModel):
+    ingredients: Optional[List[str]] = None # 재료가 없을 수도 있으므로 Optional
     q: Optional[str] = None
-    ingredients: Optional[List[str]] = None
     size: int = 20
     topk: int = 3
     ing_mode: str = "RATIO"

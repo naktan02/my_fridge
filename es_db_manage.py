@@ -253,25 +253,35 @@ class ESManager(BaseManager):
         await create_dishes_index(self.es_client)
         print("✅ 인덱스 생성 완료.")
 
+    async def _delete_index(self):
+        print(f"--- Elasticsearch 인덱스 '{DISHES_INDEX_NAME}' 삭제를 시도합니다 ---")
+        if await self.es_client.indices.exists(index=DISHES_INDEX_NAME):
+            await self.es_client.indices.delete(index=DISHES_INDEX_NAME)
+            print(f"✅ 인덱스 '{DISHES_INDEX_NAME}'를 성공적으로 삭제했습니다.")
+        else:
+            print("✅ 인덱스가 이미 존재하지 않습니다.")
+
+
     async def _reindex_data(self):
         print("--- Elasticsearch 데이터 재색인을 시작합니다 ---")
         dish_repo = DishRepository(self.db)
         search_repo = SearchRepository(self.es_client)
-        
         await search_repo.reset_index()
 
         offset, total = 0, 0
         BATCH_SIZE = 200
         while True:
+            # DB에서 Dish와 관련 레시피 정보를 Eager Loading으로 한번에 가져옴
             dishes_batch = dish_repo.get_all_dishes(skip=offset, limit=BATCH_SIZE)
             if not dishes_batch: break
 
             actions = []
             for dish in dishes_batch:
                 for recipe in dish.recipes:
+
+                    description = dish.semantic_description or ""
+                    
                     ingredient_names = [item.ingredient.name for item in recipe.ingredients]
-                    instructions_text = ' '.join(map(str, recipe.instructions)) if isinstance(recipe.instructions, list) else str(recipe.instructions)
-                    description = instructions_text or getattr(dish, "semantic_description", "")
                     
                     actions.append({
                         "_index": DISHES_INDEX_NAME,
@@ -282,7 +292,7 @@ class ESManager(BaseManager):
                             "recipe_title": getattr(recipe, "title", "") or "",
                             "recipe_name": getattr(recipe, "name", "") or "",
                             "ingredients": ingredient_names,
-                            "description": description
+                            "description": description 
                         }
                     })
             
@@ -298,20 +308,27 @@ class ESManager(BaseManager):
         print(f"✅ 재색인 완료. 총 {total}개의 문서가 처리되었습니다.")
 
     async def run(self, command: str):
-        if command == "create_index":
+        # ===== [수정된 부분] =====
+        if command == "delete_index":
+            await self._delete_index()
+        elif command == "create_index":
             await self._create_index()
         elif command == "reindex":
             await self._reindex_data()
         else:
             print(f"알 수 없는 ES 관련 명령어입니다: {command}")
+        # ========================
 
 def print_usage():
+    # ===== [수정된 부분] =====
     print("\n사용법: docker-compose exec api uv run python es_db_manage.py [group] [command]")
     print("\nGroups & Commands:")
     print("  db reset         : 요리/레시피/재료 관련 DB 데이터를 모두 삭제합니다.")
     print("  db import_all    : 모든 데이터를 DB로 가져옵니다.")
+    print("  es delete_index  : Elasticsearch의 'dishes' 인덱스를 삭제합니다.")
     print("  es create_index  : Elasticsearch에 'dishes' 인덱스를 생성합니다.")
     print("  es reindex       : DB의 모든 요리/레시피 데이터를 Elasticsearch에 재색인합니다.")
+    # ========================
 
 async def main():
     if len(sys.argv) < 3:
@@ -324,15 +341,15 @@ async def main():
     try:
         if group == "db":
             manager = DBManager()
-            await manager.__aenter__()
-            await manager.run(command)
         elif group == "es":
             manager = ESManager()
-            await manager.__aenter__()
-            await manager.run(command)
         else:
             print(f"알 수 없는 명령어 그룹입니다: {group}")
             print_usage()
+            return
+        
+        await manager.__aenter__()
+        await manager.run(command)
     finally:
         if manager:
             await manager.__aexit__(None, None, None)
