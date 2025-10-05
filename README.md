@@ -1,4 +1,4 @@
-# My Fridge API 冷蔵庫をお願い (내 냉장고를 부탁해)
+# My Fridge API (내 냉장고를 부탁해)
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.116-green.svg)](https://fastapi.tiangolo.com/)
@@ -10,7 +10,7 @@
 ## ✨ 주요 기능
 
 * **재료 기반 레시피 추천**: 사용자가 가진 재료 목록을 기반으로 만들 수 있는 요리 목록을 추천합니다.
-* **키워드 검색**: "매콤한", "찌개" 등 다양한 키워드로 원하는 레시피를 검색할 수 있습니다.
+* **자연어 및 키워드 검색**: "매콤한 찌개"와 같은 자연어는 물론, "돼지고기", "안주" 등 다양한 키워드로 원하는 레시피를 정확하게 검색할 수 있습니다.
 * **사용자 관리**: 회원가입, 로그인, 로그아웃 기능을 통해 개인화된 서비스를 제공합니다.
 * **내 냉장고 관리**: 사용자가 보유한 재료를 등록하고 관리할 수 있습니다.
 
@@ -25,7 +25,7 @@
 
 1.  **프로젝트 클론**
     ```bash
-    git clone <your-repository-url>
+    git clone https://github.com/bible-college/my_fridge.git
     cd my_fridge
     ```
 
@@ -35,25 +35,32 @@
     cp .env.example .env
     ```
 
-3.  **Docker Compose 실행**
-    아래 명령어를 실행하여 API 서버, 데이터베이스, Elasticsearch 등 모든 서비스를 한번에 실행합니다.
+3.  **의존성 동기화 (선택사항)**
+    `uv.lock` 파일이 이미 존재하므로 이 단계는 건너뛸 수 있습니다. 만약 `pyproject.toml`의 의존성을 변경했다면, 아래 명령어로 `uv.lock` 파일을 업데이트하세요.
+    ```bash
+    # Docker가 설치되어 있다면 Docker 내부에서 실행하는 것을 권장합니다.
+    docker-compose run --rm api uv lock
+    ```
+
+4.  **Docker Compose 실행**
+    아래 명령어를 실행하여 API 서버, 데이터베이스, Elasticsearch 등 모든 서비스를 한 번에 실행합니다. `--build` 옵션은 Dockerfile 변경사항을 반영하여 이미지를 새로 빌드합니다.
     ```bash
     docker-compose up --build -d
     ```
     API 서버는 기본적으로 `http://localhost:8000`에서 실행됩니다.
 
-4.  **데이터베이스 초기화 및 데이터 임포트**
-    최초 실행 시, 아래 명령어들을 순서대로 실행하여 DB 스키마를 생성하고 초기 데이터를 임포트해야 합니다.
+5.  **데이터베이스 초기화 및 데이터 임포트**
+    최초 실행 시, 아래 명령어들을 순서대로 실행하여 DB 스키마를 생성하고 초기 데이터를 임포트해야 합니다. `docker-compose.yml` 설정에 따라 `alembic upgrade head`는 컨테이너 시작 시 자동으로 실행될 수 있습니다.
 
     ```bash
-    # 1. 데이터베이스 스키마 생성 (Alembic)
+    # 1. (선택사항) DB 스키마 생성 (docker-compose up에서 자동 실행)
     docker-compose exec api uv run alembic upgrade head
 
     # 2. 초기 데이터 임포트 (재료, 레시피 등)
     docker-compose exec api uv run python es_db_manage.py db import_all
     ```
 
-5.  **Elasticsearch 인덱스 생성 및 색인**
+6.  **Elasticsearch 인덱스 생성 및 색인**
     검색 기능을 사용하려면 Elasticsearch 인덱스를 생성하고 데이터를 색인해야 합니다.
     ```bash
     # 1. 검색용 인덱스 생성 (한글 분석기 설정 포함)
@@ -65,7 +72,7 @@
 
 ## 📖 API 사용법
 
-API는 `http://localhost:8000`을 기본 URL로 사용합니다. 모든 요청은 **로그인 후 발급받는 `session_id` 쿠키**가 필요합니다.
+API는 `http://localhost:8000`을 기본 URL로 사용합니다. 재료 추가 및 레시피 검색 등 대부분의 요청은 **로그인 후 발급받는 `session_id` 쿠키**가 필요합니다.
 
 ### 사용자 (Users)
 
@@ -87,11 +94,19 @@ API는 `http://localhost:8000`을 기본 URL로 사용합니다. 모든 요청�
 
 ### 내 재료 (Ingredients)
 
-* **내 재료 추가**: `POST /api/v1/ingredients/me`
+* **내 재료 여러 개 추가**: `POST /api/v1/ingredients/me`
     ```json
     {
-      "ingredient_name": "김치",
-      "expiration_date": "2025-12-31"
+      "ingredients": [
+        {
+          "ingredient_name": "돼지고기",
+          "expiration_date": "2025-10-26"
+        },
+        {
+          "ingredient_name": "김치",
+          "expiration_date": "2025-11-15"
+        }
+      ]
     }
     ```
 
@@ -137,3 +152,41 @@ API는 `http://localhost:8000`을 기본 URL로 사용합니다. 모든 요청�
     * `description`: 요리에 대한 감성/표현 키워드 (e.g., "매콤한", "칼칼한")
 
 ## 🗂️ 프로젝트 구조
+
+my_fridge/
+├── alembic/              # 데이터베이스 마이그레이션 (Alembic)
+│   ├── versions/
+│   └── env.py
+├── api/
+│   └── v1/
+│       └── routes/       # API 엔드포인트 라우터
+│           ├── dishes.py
+│           ├── ingredients.py
+│           └── users.py
+├── auth/                 # 인증 관련 의존성
+│   └── dependencies.py
+├── elasticsearch/        # Elasticsearch 설정
+│   ├── dict/             # 한글 분석기 사전 파일
+│   └── Dockerfile
+├── repositories/         # 데이터베이스 및 검색 로직
+│   ├── dishes.py
+│   ├── ingredients.py
+│   ├── search.py
+│   └── users.py
+├── schemas/              # 데이터 유효성 검사 (Pydantic)
+│   ├── dish.py
+│   ├── ingredient.py
+│   └── user.py
+├── tests/                # 테스트 코드
+│   ├── test_dishes.py
+│   ├── test_ingredients.py
+│   └── test_users.py
+├── utils/                # 유틸리티 함수
+│   └── security.py
+├── .env.example          # 환경변수 예시 파일
+├── docker-compose.yml    # Docker 서비스 정의
+├── Dockerfile            # API 서비스 Docker 이미지 빌드 파일
+├── es_db_manage.py       # DB/ES 데이터 관리 스크립트
+├── main.py               # FastAPI 앱 진입점
+├── models.py             # 데이터베이스 모델 (SQLAlchemy)
+└── pyproject.toml        # 프로젝트 의존성 관리
