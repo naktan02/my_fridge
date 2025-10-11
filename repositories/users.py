@@ -1,6 +1,7 @@
 # repositories/users.py (신규 생성)
 from sqlalchemy.orm import Session
 import models
+from models import User
 from schemas.user import UserCreate
 from utils.security import get_password_hash
 
@@ -16,6 +17,7 @@ class UserRepository:
         hashed_password = get_password_hash(user.password)
         db_user = models.User(
             email=user.email,
+            nickname=user.nickname,
             hashed_password=hashed_password
         )
         self.db.add(db_user)
@@ -25,3 +27,6 @@ class UserRepository:
     
     def get_user_by_id(self, user_id: int) -> models.User | None:
         return self.db.query(models.User).filter(models.User.id == user_id).first()
+    
+    def get_user_by_nickname(self, nickname: str) -> User | None:
+        return self.db.query(User).filter(User.nickname == nickname).first()

@@ -33,19 +33,23 @@ def get_user_repo(db: Session = Depends(get_db)) -> UserRepository:
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def signup(
     user_create: UserCreate,
-    # 의존성 주입을 통해 UserRepository 인스턴스를 받습니다.
     repo: UserRepository = Depends(get_user_repo)
 ):
-    """
-    **회원가입**
-    - 이메일 중복 체크 후, 새로운 사용자를 생성합니다.
-    """
-    # 생성된 인스턴스(repo)의 메서드를 호출합니다.
-    db_user = repo.get_user_by_email(email=user_create.email)
-    if db_user:
+    # 이메일 중복 체크
+    db_user_by_email = repo.get_user_by_email(email=user_create.email)
+    if db_user_by_email:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="이미 등록된 이메일입니다.",
+        )
+
+    # --- nickname 중복 체크 로직 추가 ---
+    # (UserRepository에 get_user_by_nickname 메서드가 필요합니다. 아래에서 만듭니다.)
+    db_user_by_nickname = repo.get_user_by_nickname(nickname=user_create.nickname)
+    if db_user_by_nickname:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 사용 중인 닉네임입니다.",
         )
     return repo.create_user(user=user_create)
 
