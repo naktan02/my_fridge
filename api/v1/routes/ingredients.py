@@ -1,6 +1,6 @@
 # /backend/api/v1/routes/ingredients.py
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status # Response, status 추가
 from sqlalchemy.orm import Session
 import models
 import schemas
@@ -13,17 +13,28 @@ router = APIRouter()
 
 @router.post("/me", response_model=List[schemas.ingredient.UserIngredientResponse])
 def add_my_ingredients(
-    ingredients_create: schemas.ingredient.UserIngredientsCreate, # ✅ UserIngredientsCreate 스키마 사용
+    ingredients_create: schemas.ingredient.UserIngredientsCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     """**사용자용 API** - 나의 냉장고에 여러 재료를 한 번에 추가합니다."""
     repo = IngredientRepository(db)
     user_id = current_user.id
-    # ✅ 여러 재료를 추가하는 리포지토리 메서드 호출
     return repo.add_ingredients_to_user(user_id=user_id, ingredients_data=ingredients_create.ingredients)
 
-# ✅ 수정: 최종 URL -> POST /api/v1/ingredients/admin
+# --- 아래 삭제 API 추가 ---
+@router.delete("/{ingredient_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_ingredient(
+    ingredient_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """**사용자용 API** - 나의 냉장고에서 특정 재료를 삭제합니다."""
+    repo = IngredientRepository(db)
+    repo.delete_user_ingredient(user_id=current_user.id, user_ingredient_id=ingredient_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/admin", response_model=schemas.ingredient.MasterIngredientResponse, status_code=201)
 def create_master_ingredient_by_admin(
     ingredient_create: schemas.ingredient.MasterIngredientCreate,
