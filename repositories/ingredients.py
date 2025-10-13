@@ -74,19 +74,19 @@ class IngredientRepository:
             raise e
         
         
-def delete_user_ingredient(self, user_id: int, user_ingredient_id: int):
-    """사용자의 재료를 삭제합니다."""
-    db_user_ingredient = self.db.query(models.UserIngredient).filter(
-        models.UserIngredient.id == user_ingredient_id,
-        models.UserIngredient.user_id == user_id
-    ).first()
+    def delete_user_ingredient(self, user_id: int, user_ingredient_id: int):
+        """사용자의 재료를 삭제합니다."""
+        db_user_ingredient = self.db.query(models.UserIngredient).filter(
+            models.UserIngredient.id == user_ingredient_id,
+            models.UserIngredient.user_id == user_id
+        ).first()
 
-    if not db_user_ingredient:
-        raise HTTPException(status_code=404, detail="해당 재료를 찾을 수 없습니다.")
+        if not db_user_ingredient:
+            raise HTTPException(status_code=404, detail="해당 재료를 찾을 수 없습니다.")
 
-    try:
-        self.db.delete(db_user_ingredient)
-        self.db.commit()
-    except Exception as e:
-        self.db.rollback()
-        raise e
+        try:
+            self.db.delete(db_user_ingredient)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            raise e
