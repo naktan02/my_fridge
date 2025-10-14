@@ -163,4 +163,4 @@ class DishRepository:
             ORDER BY u.ord
         """)
         orm_stmt = (select(models.Recipe).from_statement(stmt).params(recipe_ids=recipe_ids).options(joinedload(models.Recipe.ingredients).joinedload(models.RecipeIngredient.ingredient)))
-        return self.db.execute(orm_stmt).scalars().all()
+        return self.db.execute(orm_stmt).unique().scalars().all()
