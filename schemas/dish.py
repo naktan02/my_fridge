@@ -1,7 +1,7 @@
 # /backend/schemas/dish.py
 
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 # --- Recipe 스키마를 이곳에 함께 정의하거나, recipe.py로 분리해도 좋습니다. ---
 
@@ -16,7 +16,7 @@ class RecipeBase(BaseModel):
     difficulty: Optional[int] = None
     serving_size: Optional[str] = None
     cooking_time: Optional[int] = None
-    instructions: str
+    instructions: Optional[Any] = None
     youtube_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
 
