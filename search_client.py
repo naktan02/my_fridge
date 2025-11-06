@@ -69,10 +69,10 @@ async def create_dishes_index(es: AsyncElasticsearch):
                     "updateable": True,
                     "lenient": True
                 }
-            },
-            "similarity": {
-                "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
             }
+        },
+        "similarity": {
+            "bm25_desc": {"type": "BM25", "k1": 0.9, "b": 0.4}
         }
     }
 
@@ -91,6 +91,11 @@ async def create_dishes_index(es: AsyncElasticsearch):
                 "analyzer": "ko_index_analyzer",
                 "search_analyzer": "ko_search_analyzer",
                 "fields": {"raw": {"type": "keyword"}}
+            },
+            "recipe_name": {
+                "type": "text",
+                "analyzer": "ko_index_analyzer",
+                "search_analyzer": "ko_search_analyzer"
             },
             "ingredients": {
                 "type": "keyword",  # 집계/필터
@@ -128,7 +133,7 @@ async def lifespan(app):
     try:
         await _wait_for_es(es_client)
         print("Elasticsearch client connected.")
-        await create_dishes_index(es_client)
+        # await create_dishes_index(es_client)
         yield
     finally:
         if es_client:

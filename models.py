@@ -5,7 +5,7 @@ from sqlalchemy import (
     func
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY,JSONB
 from database import Base
 
 # --- 중간 테이블 (M:N 관계) ---
@@ -22,6 +22,7 @@ class User(Base):
     # ... (is_admin을 제외한 개인정보 관련 필드만 유지)
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    nickname = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -55,11 +56,12 @@ class Recipe(Base):
     __tablename__ = "recipes"
     id = Column(Integer, primary_key=True, index=True)
     dish_id = Column(Integer, ForeignKey("dishes.id"), nullable=False)
-    title = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    title = Column(String, nullable=False)
     difficulty = Column(Integer)
     serving_size = Column(String)
     cooking_time = Column(Integer) # 분 단위
-    instructions = Column(Text, nullable=False)
+    instructions = Column(JSONB, nullable=False)
     youtube_url = Column(String, nullable=True)
     thumbnail_url = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

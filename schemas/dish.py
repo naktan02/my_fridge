@@ -1,7 +1,7 @@
 # /backend/schemas/dish.py
 
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 # --- Recipe 스키마를 이곳에 함께 정의하거나, recipe.py로 분리해도 좋습니다. ---
 
@@ -16,7 +16,7 @@ class RecipeBase(BaseModel):
     difficulty: Optional[int] = None
     serving_size: Optional[str] = None
     cooking_time: Optional[int] = None
-    instructions: str
+    instructions: Optional[Any] = None
     youtube_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
 
@@ -64,19 +64,21 @@ class Dish(DishBase):
         from_attributes = True
         
         
-class DishSearchResult(BaseModel):
-    """개별 검색 결과를 위한 스키마"""
-    score: Optional[float] = None  # Elasticsearch의 연관성 점수
+# 검색 결과를 위한 스키마 (Grouped Response)
+class GroupedDishSearchResult(BaseModel):
     dish_id: int
-    recipe_id: int
     dish_name: str
-    recipe_title: Optional[str] = None 
-    thumbnail_url: Optional[str] = None
+    recipe_ids: List[int]
 
-    class Config:
-        from_attributes = True
+class GroupedSearchResponse(BaseModel):
+    total: int
+    results: List[GroupedDishSearchResult]
 
-class SearchResponse(BaseModel):
-    """전체 검색 응답을 위한 스키마"""
-    total: int # 총 검색 결과 개수
-    results: List[DishSearchResult]
+# 검색 요청을 위한 스키마 (Request Body)
+class SearchRequest(BaseModel):
+    ingredients: Optional[List[str]] = None # 재료가 없을 수도 있으므로 Optional
+    q: Optional[str] = None
+    size: int = 20
+    topk: int = 3
+    ing_mode: str = "RATIO"
+    ing_ratio: float = 0.6

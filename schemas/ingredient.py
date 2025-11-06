@@ -20,7 +20,9 @@ class UserIngredientCreate(BaseModel):
     ingredient_name: str
     expiration_date: date
 
-
+class UserIngredientsCreate(BaseModel):
+    ingredients: List[UserIngredientCreate]
+    
 # 클라이언트에게 재료 정보를 반환할 때의 데이터 형식 (출력용)
 class UserIngredientResponse(BaseModel):
     id: int

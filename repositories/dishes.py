@@ -1,7 +1,7 @@
 # /backend/repositories/dishes.py
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, distinct
+from sqlalchemy import select, distinct, text
 import models
 from schemas.dish import DishCreate, RecipeCreate
 from fastapi import HTTPException
@@ -152,3 +152,15 @@ class DishRepository:
             .joinedload(models.Recipe.ingredients)
             .joinedload(models.RecipeIngredient.ingredient)
         ).filter(models.Dish.id.in_(dish_ids)).all()
+        
+    def get_recipes_by_ids_ordered(self, recipe_ids: list[int]) -> list[models.Recipe]:
+        if not recipe_ids:
+            return []
+        stmt = text("""
+            SELECT r.*
+            FROM unnest(:recipe_ids) WITH ORDINALITY AS u(id, ord)
+            JOIN recipes AS r ON r.id = u.id
+            ORDER BY u.ord
+        """)
+        orm_stmt = (select(models.Recipe).from_statement(stmt).params(recipe_ids=recipe_ids).options(joinedload(models.Recipe.ingredients).joinedload(models.RecipeIngredient.ingredient)))
+        return self.db.execute(orm_stmt).unique().scalars().all()

@@ -8,11 +8,16 @@ services:
         uv run alembic upgrade head &&
         uv run uvicorn main:app --host 0.0.0.0 --port 8000
       "
+    # 로컬에서도 계속 쓰고 싶다면 ports 유지
     ports:
       - "${HOST_API_PORT:-8000}:8000"
+    # cloudflared가 같은 네트워크에서 붙도록 내부 포트도 명시
+    expose:
+      - "8000"
     volumes:
       - .:/app
       - uv_venv:/app/.venv
+      - /mnt/c/Users/PC/Desktop/my_fridge_data:/data
     env_file:
       - .env
     depends_on:
@@ -24,6 +29,9 @@ services:
         condition: service_healthy
     environment:
       - ES_HOST=http://elasticsearch:9200
+    restart: unless-stopped
+    networks:
+      - appnet
 
   db:
     image: pgvector/pgvector:pg16
@@ -39,6 +47,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    networks:
+      - appnet
 
   redis:
     image: redis:7-alpine
@@ -47,8 +58,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - appnet
 
-  # ✅ elasticsearch 서비스 추가
+  # ✅ elasticsearch 서비스
   elasticsearch:
     build: ./elasticsearch
     container_name: my_fridge_es
@@ -58,20 +72,39 @@ services:
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=false
       - ES_JAVA_OPTS=-Xms2g -Xmx2g
-    ports: ["9200:9200"]         # ← 단일 노드면 9300 불필요. 깎자.
+    ports:
+      - "9200:9200"    # 단일 노드면 9300 불필요
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
-      - ./elasticsearch/dict:/usr/share/elasticsearch/config/dict:ro  # 경로 수정
+      - ./elasticsearch/dict:/usr/share/elasticsearch/config/dict:ro
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile:  { soft: 65536, hard: 65536 }
     healthcheck:
-      # curl/wget 없이도 동작. HTTP 200 또는 "You Know, for Search" 확인.
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200 && printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" >&3 && head -n1 <&3 | grep -q \"HTTP/1\"'"]
       interval: 10s
       timeout: 10s
       retries: 30
       start_period: 30s
+    restart: unless-stopped
+    networks:
+      - appnet
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
 
 volumes:
   postgres_data:
